@@ -121,6 +121,14 @@ This is the **first experimental export milestone**, not a finished Kane's Wrath
 4. Check Unity Console for **`[C&C SAGE Phase 2B] Edited W3X test PASS`**. If the source mesh contains AABTree, only UV export is tested.
 5. Run **Tools > C&C SAGE > Run Phase 2B Advanced Export Self-Test** for a synthetic skeleton, two-influence skinning, local pivot edits, FixupMatrix rejection and runtime-only texture rejection.
 
+### Editing workflow
+
+1. Select the imported `.w3x` model asset in Project.
+2. Choose **Tools > C&C SAGE > Create Editable W3X Scene Instance** and approve creation of independent Mesh and Material assets under `Assets/CncSageEditable`.
+3. Edit the scene instance using Unity mesh editing code/tools, change supported `SkinnedMeshRenderer.sharedMesh.boneWeights`, assign other textures to the generated material copies, or move pivots where safe.
+4. Export **the editable scene instance** using the appropriate advanced command below; the source mesh imported sub-assets are not edited and the original W3X remains intact. Save the emitted W3X as a new filename next to the source if it has relative ART includes.
+5. Reimport and compare against the editable Unity instance. For models with an external `_SKL.W3X`, export pivot changes from the separately selected `_SKL` asset.
+
 ### Authoring commands
 
 - **Tools > C&C SAGE > Export Selected W3X (Safe Roundtrip)...** — existing Phase 2A behavior (skin/pivots/FXShader remain source-preserved).
