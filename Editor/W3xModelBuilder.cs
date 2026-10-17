@@ -47,10 +47,8 @@ namespace MusafirEx.CncSage.Editor
 
                 bool wantsSkin = string.Equals(data.GeometryType, "Skin",
                     StringComparison.OrdinalIgnoreCase);
-                BoneWeight[] weights;
+                BoneWeight[] weights = null;
                 bool canSkin = wantsSkin && TryGetWeights(data, pivots, out weights);
-                if (!canSkin)
-                    weights = null;
 
                 // SAGE skin vertices are authored in their influencing pivot space.
                 // Bake source rest-pivot transforms, as Blender does for this format.
