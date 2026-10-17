@@ -10,7 +10,7 @@ namespace MusafirEx.CncSage.Editor
     /// Prototype importer for editable W3X XML geometry.
     /// W3D is a different binary format and is intentionally not registered.
     /// </summary>
-    [ScriptedImporter(2, "w3x")]
+    [ScriptedImporter(3, "w3x")]
     public sealed class W3xImporter : ScriptedImporter
     {
         public override void OnImportAsset(AssetImportContext context)
@@ -87,7 +87,16 @@ namespace MusafirEx.CncSage.Editor
                 if (data.Uvs.Length == vertices.Length)
                     mesh.uv = data.Uvs;
                 else if (data.Uvs.Length > 0)
-                    Debug.LogWarning("[C&C SAGE] Incorrect UV count in " + data.Identifier);
+                    Debug.LogWarning("[C&C SAGE] Incorrect first UV set count in " + data.Identifier);
+
+                if (data.Uvs2.Length == vertices.Length)
+                    mesh.uv2 = data.Uvs2;
+                else if (data.Uvs2.Length > 0)
+                    Debug.LogWarning("[C&C SAGE] Incorrect second UV set count in " + data.Identifier);
+
+                if (data.UvSetCount > 2)
+                    Debug.LogWarning("[C&C SAGE] " + data.Identifier + " has " +
+                        data.UvSetCount + " W3X TexCoords sets; currently importing the first two.");
 
                 mesh.RecalculateBounds();
                 context.AddObjectToAsset("mesh_" + i, mesh);

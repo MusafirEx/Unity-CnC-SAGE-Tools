@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.1.1 Phase 1 prototype — geometry import and metadata-only recognition of non-mesh W3X sources.** Export, binary W3D, compiled C&C3 assets, skeletons, animation, shader materials, texture resolution, and HLOD/container bindings are **not yet implemented**.
+**Status: 0.1.2 Phase 1 prototype — geometry import with UV0/UV1, inspection diagnostics and metadata-only recognition of non-mesh W3X sources.** Export, binary W3D, compiled C&C3 assets, skeletons, animation, shader materials, texture resolution, and HLOD/container bindings are **not yet implemented**.
 
 ## Install in Unity
 
@@ -26,7 +26,7 @@ Requires Git installed and Unity 2022.3 LTS or later.
 - XML `AssetDeclaration` containing one or more `W3DMesh` elements.
 - Recognizes hierarchy (`_SKL`), animation (`_ATKA`, `_IDLA`), container, collision and texture declarations without falsely requiring mesh geometry.
 - `CncSageSourceInfo` on the root records detected declaration names and imported mesh count. Zero-mesh assets are **metadata-only placeholders**, not functioning skeletons or animations.
-- Direct vertices, triangle indices, optional per-vertex normals and first UV channel.
+- Direct vertices, triangle indices, optional per-vertex normals and **first two UV sets** (Unity Mesh.uv / Mesh.uv2).
 - Relative local `<Includes><Include source="ART:..."/></Includes>` resources when present.
 - Auto-generated model hierarchy with one child GameObject per mesh and retained mesh ID.
 - Basic preliminary axis conversion: `(X,Y,Z) -> (X,Z,Y)`, reversing triangle winding.
@@ -42,6 +42,15 @@ The `Minimal W3X Mesh` sample now includes:
 Real `*_SKL.W3X`, `*_ATKA.W3X` and `*_IDLA.W3X` sources should no longer throw `No W3DMesh geometry found`. Missing local `ART:` reference warnings and skinning limitations remain until later phases.
 
 If an earlier repository ZIP was extracted into `Assets/Extension/Unity-CnC-SAGE-Tools-main`, replace that copy with the updated files. Updating a Git package **does not update an independent Assets folder copy**. Avoid installing both copies because duplicate assemblies may conflict.
+
+### Inspect W3X UV mapping
+
+1. Select `GUPitbull_FP.w3x` in the Unity Project window (or its imported scene instance).
+2. Select **Tools > C&C SAGE > Inspect Selected W3X UV Channels**.
+3. Read the report in the Console: per-mesh vertex count, number of `TexCoords` blocks, coordinates per channel, UV bounds, imported Mesh.uv / Mesh.uv2 counts, and original `FXShader` texture names.
+4. If the file contains multiple `TexCoords` blocks, the first now imports to `Mesh.uv` (UV0) and the second to `Mesh.uv2` (UV1). The synthetic triangle sample has two intentionally distinct UV sets for regression testing.
+
+**UV mapping note:** A visible mismatch can be caused by choosing the wrong material/texture, by the mesh using a secondary UV stage, or by texture coordinate transforms in SAGE shader declarations. Simply enabling UV1 does not automatically make Unity's Standard shader use it for the main texture. Do not flip/overwrite the original UVs without inspecting the model's source.
 
 ### Not yet supported
 

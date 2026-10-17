@@ -16,6 +16,8 @@ namespace MusafirEx.CncSage.Editor
         public Vector3[] Positions;
         public Vector3[] Normals;
         public Vector2[] Uvs;
+        public Vector2[] Uvs2;
+        public int UvSetCount;
         public int[] TriangleIndices;
     }
 
@@ -184,10 +186,15 @@ namespace MusafirEx.CncSage.Editor
                 normalsElement.Elements().Where(e => e.Name.LocalName == "N")
                     .Select(e => ReadVector3(e, id)).ToArray();
 
-            // This first version imports only the first UV set.
-            var uvElement = FirstChild(node, "TexCoords");
-            var uvs = uvElement == null ? new Vector2[0] :
-                uvElement.Elements().Where(e => e.Name.LocalName == "T")
+            // W3X may contain multiple sibling TexCoords blocks. Keep the
+            // first two channels in Unity UV0 / UV1, respectively.
+            var uvElements = node.Elements()
+                .Where(e => e.Name.LocalName == "TexCoords").ToArray();
+            var uvs = uvElements.Length < 1 ? new Vector2[0] :
+                uvElements[0].Elements().Where(e => e.Name.LocalName == "T")
+                    .Select(e => ReadVector2(e, id)).ToArray();
+            var uvs2 = uvElements.Length < 2 ? new Vector2[0] :
+                uvElements[1].Elements().Where(e => e.Name.LocalName == "T")
                     .Select(e => ReadVector2(e, id)).ToArray();
 
             return new W3xMeshData
@@ -197,6 +204,8 @@ namespace MusafirEx.CncSage.Editor
                 Positions = positions,
                 Normals = normals,
                 Uvs = uvs,
+                Uvs2 = uvs2,
+                UvSetCount = uvElements.Length,
                 TriangleIndices = indices.ToArray()
             };
         }

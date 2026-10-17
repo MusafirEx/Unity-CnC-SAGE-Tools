@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Experimental W3X geometry importer with metadata-only hierarchy and animation source support; W3D and exporting are planned.",
+  "description": "Experimental W3X geometry importer with two UV channels, UV diagnostics and metadata-only non-mesh source support.",
   "unity": "2022.3",
   "keywords": ["command and conquer", "sage", "w3x", "w3d", "modding"],
   "author": {
