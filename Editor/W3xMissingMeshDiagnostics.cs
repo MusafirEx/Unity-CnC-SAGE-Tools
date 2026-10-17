@@ -23,9 +23,9 @@ namespace MusafirEx.CncSage.Editor
             try
             {
                 string editablePath = FindUniqueAsset(
-                    "GPPitbull_Editable", ".prefab", "t:Prefab");
+                    "GPPitbull_Editable", ".prefab");
                 string exportedPath = FindUniqueAsset(
-                    "GPPitbull_unity_skin", ".w3x", "t:GameObject");
+                    "GPPitbull_unity_skin", ".w3x");
                 var editable = AssetDatabase.LoadAssetAtPath<GameObject>(
                     editablePath);
                 var exported = AssetDatabase.LoadAssetAtPath<GameObject>(
@@ -133,9 +133,9 @@ namespace MusafirEx.CncSage.Editor
         }
 
         private static string FindUniqueAsset(
-            string name, string extension, string filter)
+            string name, string extension)
         {
-            var paths = AssetDatabase.FindAssets(name + " " + filter,
+            var paths = AssetDatabase.FindAssets(name,
                     new[] { "Assets" })
                 .Select(AssetDatabase.GUIDToAssetPath)
                 .Where(p => string.Equals(

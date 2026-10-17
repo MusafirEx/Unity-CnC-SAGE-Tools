@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.2.2 Phase 2B Project-asset workflow.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
+**Status: 0.2.3 Phase 2B Project-asset workflow and missing-mesh diagnostics.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
 
 ## Install in Unity
 
@@ -163,6 +163,43 @@ All commands generate **new W3X XML copies**, not binary W3D, and do not overwri
 - Material texture changes are applied **only** in the explicit advanced skin/material command, not to the safe exporter.
 - Before considering Phase 2B complete, check real-world `GPPitbull` and `GUPitbull_SKL` exports against Blender and Unity reimport; a standalone Unity smoke test cannot certify game-builder compatibility.
 - **The current GitHub branch has not yet been compiled or runtime-tested against the user's Unity Editor.**
+
+
+### Diagnosing missing meshes in Pitbull Unity skin export
+
+Use **Tools > C&C SAGE > Compare Pitbull Editable vs Unity Skin Export** to compare
+\`GPPitbull_Editable.prefab\`, its GUID-linked original \`.w3x\`, and
+\`GPPitbull_unity_skin.w3x\` **directly from the Project folder**.
+The report in Unity Console lists source, edited and exported mesh counts and
+all IDs missing from the exported model.
+
+- **NEW MESH** — an identity exists on the editable prefab but did not exist
+  in the originally imported W3X model. Phase 2B cannot add W3DMesh declarations
+  or W3DContainer bindings for this mesh. Adding \`CncSageMeshIdentity\`
+  alone does not make it exportable; Phase 2C support is required.
+- **ORIGINAL MESH MISSING** — a mesh existed in the imported W3X and the
+  editable model, but not in the reimported output. Check \`ART:\` includes,
+  geometry import errors, and Unity's Editor.log.
+- **UNTAGGED** — a GameObject with MeshFilter or SkinnedMeshRenderer is missing
+  \`CncSageMeshIdentity\`; the exporter has no source identifier to match it.
+- **DIFFERENT** — matched meshes differ by renderer type or vertex count; review
+  source bindings or edited topology.
+
+The tool only reads Project assets and logs findings. It does not change
+the Project assets, active scene, or source W3X. The exact two filenames above
+must exist uniquely under \`Assets/\`.
+
+Starting with v0.2.3, the W3X export menu detects mesh IDs absent from the
+original source or mesh GameObjects lacking an identity. It warns with the
+names and recommends **Cancel Export**, rather than silently producing an
+apparently complete model. You can explicitly choose to export existing meshes
+only, accepting that new meshes will be omitted.
+
+If the Editor log repeatedly says \`Build asset version error\` for the package
+script \`CncSageMeshIdentity.cs\`, let Unity finish recompilation and refresh
+the Git package (Window > Package Manager, refresh/update). Do not edit
+\`Library/PackageCache\` manually or delete the W3X originals. Reimport the
+source and exported assets after resolving the Asset Database mismatch.
 
 ## Roadmap
 
