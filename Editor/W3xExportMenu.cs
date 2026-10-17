@@ -78,8 +78,8 @@ namespace MusafirEx.CncSage.Editor
             if (!TryGetSelectedModel(out assetPath, out model))
             {
                 EditorUtility.DisplayDialog("C&C SAGE Export",
-                    "Select a W3X model asset in the Project window or " +
-                    "an instance of a W3X model in the scene.", "OK");
+                    "Select an imported W3X model or linked editable W3X " +
+                    "prefab in the Project window.", "OK");
                 return;
             }
 
@@ -183,35 +183,63 @@ namespace MusafirEx.CncSage.Editor
             return TryGetSelectedModel(out path, out model);
         }
 
-        private static bool TryGetSelectedModel(
+        internal static bool TryGetSelectedModel(
             out string sourcePath, out GameObject root)
         {
             sourcePath = null;
             root = null;
 
-            var selected = Selection.activeGameObject;
+            var selected = Selection.activeObject as GameObject;
+            if (selected == null)
+                selected = Selection.activeGameObject;
             if (selected == null)
                 return false;
 
             string assetPath = AssetDatabase.GetAssetPath(selected);
             if (string.IsNullOrEmpty(assetPath))
             {
-                assetPath =
-                    PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(selected);
-                root = PrefabUtility.GetNearestPrefabInstanceRoot(selected);
+                // Backwards compatibility for older scene-instance workflow.
+                var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(
+                    selected);
+                if (prefabRoot == null)
+                    return false;
+                root = prefabRoot;
+                assetPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(
+                    prefabRoot);
             }
             else
             {
                 root = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
             }
-
-            if (root == null ||
-                string.IsNullOrEmpty(assetPath) ||
-                !string.Equals(Path.GetExtension(assetPath), ".w3x",
-                    StringComparison.OrdinalIgnoreCase))
+            if (root == null || string.IsNullOrEmpty(assetPath))
                 return false;
 
-            sourcePath = assetPath;
+            string extension = Path.GetExtension(assetPath);
+            if (string.Equals(extension, ".w3x",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                sourcePath = assetPath;
+                return true;
+            }
+            if (!string.Equals(extension, ".prefab",
+                StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            var link = root.GetComponent<CncSageEditableSource>();
+            if (link == null || string.IsNullOrWhiteSpace(link.SourceGuid))
+                return false;
+
+            // GUID lookup works even when the original W3X is moved within
+            // Assets. Never treat an arbitrary prefab pathname as source XML.
+            string resolved = AssetDatabase.GUIDToAssetPath(link.SourceGuid);
+            if (string.IsNullOrEmpty(resolved) ||
+                !string.Equals(Path.GetExtension(resolved), ".w3x",
+                    StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(AssetDatabase.AssetPathToGUID(resolved),
+                    link.SourceGuid, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            sourcePath = resolved;
             return true;
         }
     }
