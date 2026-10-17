@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.1.3 Phase 1B preview.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
+**Status: 0.2.0 Phase 2A prototype.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
 
 ## Install in Unity
 
@@ -71,7 +71,7 @@ If an earlier repository ZIP was extracted into `Assets/Extension/Unity-CnC-SAGE
 - Exact FXShader effect graphs, multipass triangle material assignments, all texture stages, UV orientation validation.
 - Full HLOD/LOD model assembly, collision boxes, proxies and aggregate export.
 - Binary `.w3d` files or compiled game archives.
-- **Any W3X/W3D export** or tested Kane's Wrath in-game interoperability.
+- Full W3X/W3D **game-ready export**, creation of new models from scratch, or tested Kane's Wrath in-game interoperability.
 
 **Warning:** Coordinate conversion, bindposes and complex FXShader material behavior still need verification with real game assets. A default Unity material may appear where SAGE shader definitions are missing. Do not use this prototype to overwrite original game files.
 
@@ -82,9 +82,35 @@ https://github.com/OpenSAGE/OpenSAGE.BlenderPlugin
 
 This project contains an **independent C# implementation**, not a port or copy of OpenSAGE's LGPL-3.0 Python implementation. Original SAGE/C&C game assets are not bundled. See `LICENSE` for this project's MIT license.
 
+
+## Phase 2A: W3X source-preserving export (v0.2.0)
+
+This is the **first experimental export milestone**, not a finished Kane's Wrath exporter. Existing sources are never overwritten.
+
+1. In the Unity Project window, select the original imported `.w3x` model, or select an instance of that imported W3X prefab in the scene.
+2. Open **Tools > C&C SAGE > Export Selected W3X (Safe Roundtrip)...**.
+3. Save a **new** file next to the original (recommended filename: `Model_unity_roundtrip.w3x`).
+4. The exporter validates mesh IDs and topology, emits a W3X XML copy, reloads it and checks that non-mesh declarations were preserved.
+5. For a quick internal test use **Tools > C&C SAGE > Run Phase 2 Exporter Self-Test** and check Unity Console for `PASS`.
+
+### Export behavior
+
+- Retains original XML includes, `W3DHierarchy`, `W3DContainer`, `W3DAnimation`, `FXShader`, bone weights and unknown SAGE nodes as source declarations, without attempting to regenerate unsupported data.
+- For static `W3DMesh`, exports compatible **vertex positions, normals, and existing UV0/UV1 channels**, applying inverse Y/Z axis conversion. The triangle indices/order must match the original importer. Position edits update bounding volumes and triangle planes where possible.
+- Source meshes with `AABTree` cannot have changed vertex positions exported until spatial-tree rebuild is implemented.
+- For `GeometryType="Skin"` models the **original source mesh block** is retained. The Phase 1B importer bakes rest-pose transforms, so writing its generated vertices directly as original skin coordinates would be unsafe.
+- Material edits, new Unity mesh topology, Unity transform/pivot edits, animation changes, external ART reference relocation, shader pass reassignment and new models created entirely inside Unity are **not exported** yet.
+- The exporter rejects destructive topology mismatches or attempts to overwrite the original. W3X files with external includes must be saved alongside the source, because include locations are unchanged.
+
+### Phase 2 acceptance testing
+
+- Use `MinimalTriangle.w3x` for export/reimport of static geometry and the two existing UV channels.
+- Use `SkinnedTriangle.w3x` and `GUPitbull_SKN.W3X` to confirm the exporter preserves original `BoneInfluences`, `W3DHierarchy` and `FXShader` declarations.
+- Compare the source and exported model in Unity, checking mesh vertex counts, UV0/UV1, hierarchy count and material assignment. A separate in-game SAGE asset-builder validation is still required.
+
 ## Roadmap
 
 1. Validate geometry, coordinate system and UVs against legal user-provided sample W3X models.
 2. Preserve hierarchy, pivots and materials; resolve neighboring mesh files referenced by containers.
-3. Build W3X exporter and verify import/export/reimport structural equivalence.
+3. Validate Phase 2A source-preserving W3X exporter, then implement complete edited static meshes, rigging and material round-trips.
 4. Add animation support, then investigate binary W3D and WrathEd toolchain validation.
