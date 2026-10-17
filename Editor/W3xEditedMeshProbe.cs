@@ -3,7 +3,9 @@ using System.IO;
 using System.Linq;
 using System.Xml.Linq;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace MusafirEx.CncSage.Editor
 {
@@ -19,31 +21,30 @@ namespace MusafirEx.CncSage.Editor
         [MenuItem(Command)]
         private static void Validate()
         {
-            var selection = Selection.activeGameObject;
-            var path = selection == null ? null :
-                AssetDatabase.GetAssetPath(selection);
-            if (string.IsNullOrEmpty(path) && selection != null)
-                path = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(
-                    selection);
-            if (string.IsNullOrEmpty(path) ||
-                !string.Equals(Path.GetExtension(path), ".w3x",
-                    StringComparison.OrdinalIgnoreCase))
+            string path;
+            GameObject model;
+            if (!W3xExportMenu.TryGetSelectedModel(out path, out model))
             {
                 EditorUtility.DisplayDialog("C&C SAGE Phase 2B",
-                    "Select an imported W3X asset or its scene instance.", "OK");
+                    "Select an imported W3X or linked editable W3X " +
+                    "prefab in the Project window.", "OK");
                 return;
             }
 
             GameObject clone = null;
             Mesh workingMesh = null;
+            Scene previewScene = default(Scene);
+            bool previewOpen = false;
             try
             {
                 var source = W3xExportCore.LoadSource(Path.GetFullPath(path));
-                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-                if (prefab == null)
+                previewScene = EditorSceneManager.NewPreviewScene();
+                previewOpen = true;
+                clone = PrefabUtility.InstantiatePrefab(model, previewScene)
+                    as GameObject;
+                if (clone == null)
                     throw new InvalidDataException(
-                        "Selected W3X is not an imported model asset.");
-                clone = UnityEngine.Object.Instantiate(prefab);
+                        "Cannot instantiate selected Project model for test.");
                 clone.name = "SAGE_Phase2B_TemporaryTest";
                 clone.hideFlags = HideFlags.HideAndDontSave;
 
@@ -86,11 +87,12 @@ namespace MusafirEx.CncSage.Editor
                 var unchanged = W3xExportCore.BuildDocument(
                     source, clone, out baselineReport);
                 W3xExportCore.ValidateMetadataPreservation(source, unchanged);
-                if (baselineReport.ChangedUvs != 0 ||
-                    baselineReport.ChangedVertices != 0)
-                    throw new InvalidDataException(
-                        "Unexpected coordinate delta in baseline import. " +
-                        "Do not run edited-mesh tests until it is resolved.");
+                // An editable Project prefab may already contain valid edits.
+                // The test validates a further in-memory change, not zero
+                // differences against the original W3X.
+                Debug.Log("[C&C SAGE Phase 2B] Existing source-backed edits: " +
+                    baselineReport.ChangedUvs + " UV, " +
+                    baselineReport.ChangedVertices + " vertex.");
 
                 var uv = workingMesh.uv;
                 uv[0] = uv[0] + new Vector2(0.03125f, 0.0625f);
@@ -164,21 +166,18 @@ namespace MusafirEx.CncSage.Editor
                     UnityEngine.Object.DestroyImmediate(clone);
                 if (workingMesh != null)
                     UnityEngine.Object.DestroyImmediate(workingMesh);
+                if (previewOpen)
+                    EditorSceneManager.ClosePreviewScene(previewScene);
             }
         }
 
         [MenuItem(Command, true)]
         private static bool HasSelectedW3x()
         {
-            var selection = Selection.activeGameObject;
-            if (selection == null)
-                return false;
-            string path = AssetDatabase.GetAssetPath(selection);
-            if (string.IsNullOrEmpty(path))
-                path = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(
-                    selection);
-            return !string.IsNullOrEmpty(path) &&
-                path.EndsWith(".w3x", StringComparison.OrdinalIgnoreCase);
+            string sourcePath;
+            GameObject model;
+            return W3xExportMenu.TryGetSelectedModel(
+                out sourcePath, out model);
         }
     }
 }

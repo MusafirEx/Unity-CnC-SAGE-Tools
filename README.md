@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.2.1 Phase 2B preview.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
+**Status: 0.2.2 Phase 2B Project-asset workflow.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
 
 ## Install in Unity
 
@@ -85,7 +85,7 @@ This project contains an **independent C# implementation**, not a port or copy o
 
 ## Phase 2A: W3X source-preserving export (v0.2.0)
 
-This is the **first experimental export milestone**, not a finished Kane's Wrath exporter. Existing sources are never overwritten.
+This is the **first experimental export milestone**, not a finished Kane's Wrath exporter. No scene objects are needed for importing or exporting Project assets. Existing sources are never overwritten.
 
 1. In the Unity Project window, select the original imported `.w3x` model, or select an instance of that imported W3X prefab in the scene.
 2. Open **Tools > C&C SAGE > Export Selected W3X (Safe Roundtrip)...**.
@@ -121,13 +121,30 @@ This is the **first experimental export milestone**, not a finished Kane's Wrath
 4. Check Unity Console for **`[C&C SAGE Phase 2B] Edited W3X test PASS`**. If the source mesh contains AABTree, only UV export is tested.
 5. Run **Tools > C&C SAGE > Run Phase 2B Advanced Export Self-Test** for a synthetic skeleton, two-influence skinning, local pivot edits, FixupMatrix rejection and runtime-only texture rejection.
 
+### Project folder structure
+
+The source files remain unchanged in your existing `Assets/RTS Engine/Demo/Menu/Pitbull/` folder.
+
+```text
+Assets/
+  RTS Engine/Demo/Menu/Pitbull/
+    GPPitbull.w3x                   (original source)
+    GPPitbull_unity_roundtrip.w3x   (separate export)
+  CncSageEditable/
+    GPPitbull_Editable.prefab       (editable Project asset)
+    GPPitbull_Editable_Mesh_0.asset (independent mesh)
+    GPPitbull_Editable_Material_0.mat
+```
+
+You can run **Tools > C&C SAGE > Validate Selected W3X Mesh Edits (No Write)** on the original `.w3x` or an editable linked prefab directly from the Project window. The validator uses a disposable Preview Scene internally; it does not save a scene object.
+
 ### Editing workflow
 
 1. Select the imported `.w3x` model asset in Project.
-2. Choose **Tools > C&C SAGE > Create Editable W3X Scene Instance** and approve creation of independent Mesh and Material assets under `Assets/CncSageEditable`.
-3. Edit the scene instance using Unity mesh editing code/tools, change supported `SkinnedMeshRenderer.sharedMesh.boneWeights`, assign other textures to the generated material copies, or move pivots where safe.
-4. Export **the editable scene instance** using the appropriate advanced command below; the source mesh imported sub-assets are not edited and the original W3X remains intact. Save the emitted W3X as a new filename next to the source if it has relative ART includes.
-5. Reimport and compare against the editable Unity instance. For models with an external `_SKL.W3X`, export pivot changes from the separately selected `_SKL` asset.
+2. Choose **Tools > C&C SAGE > Create Editable W3X Project Prefab**. The tool writes a separate linked `.prefab`, copied `.asset` meshes, and `.mat` materials to `Assets/CncSageEditable` without adding a persistent object to the active scene.
+3. Select the new `*_Editable.prefab` in **Project** and edit its independent Mesh/Material assets. To edit pivot transforms, use Unity Prefab Mode (not the active game scene). Mesh vertices/UVs need a suitable editor tool or script; this package does not yet include an interactive vertex editor.
+4. Select **the editable `.prefab` asset in Project**, then use the safe or advanced W3X export command. Its `CncSageEditableSource` component stores the original W3X GUID, and the exporter reads that source for SAGE metadata. Save a new W3X beside its original if relative ART includes are present.
+5. Reimport the newly generated W3X in **Project** and compare both Project assets. To export a separately defined `_SKL.W3X` hierarchy, first create an editable Project prefab from the `_SKL` asset itself; direct source-asset edits are not required.
 
 ### Authoring commands
 
