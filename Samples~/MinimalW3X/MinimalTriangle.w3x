@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AssetDeclaration xmlns="uri:ea.com:eala:asset" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <W3DMesh id="DEMO.Triangle" GeometryType="Normal" SortLevel="0">
+    <Vertices>
+      <V X="0" Y="0" Z="0" />
+      <V X="1" Y="0" Z="0" />
+      <V X="0" Y="1" Z="0" />
+    </Vertices>
+    <Normals>
+      <N X="0" Y="0" Z="1" />
+      <N X="0" Y="0" Z="1" />
+      <N X="0" Y="0" Z="1" />
+    </Normals>
+    <TexCoords>
+      <T X="0" Y="0" />
+      <T X="1" Y="0" />
+      <T X="0" Y="1" />
+    </TexCoords>
+    <Triangles>
+      <T>
+        <V>0</V>
+        <V>1</V>
+        <V>2</V>
+        <Nrm X="0" Y="0" Z="1" />
+        <Dist>0</Dist>
+      </T>
+    </Triangles>
+  </W3DMesh>
+</AssetDeclaration>
