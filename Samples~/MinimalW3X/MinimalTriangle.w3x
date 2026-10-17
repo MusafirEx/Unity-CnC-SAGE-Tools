@@ -16,6 +16,11 @@
       <T X="1" Y="0" />
       <T X="0" Y="1" />
     </TexCoords>
+    <TexCoords>
+      <T X="0.2" Y="0.2" />
+      <T X="0.8" Y="0.2" />
+      <T X="0.2" Y="0.8" />
+    </TexCoords>
     <Triangles>
       <T>
         <V>0</V>
