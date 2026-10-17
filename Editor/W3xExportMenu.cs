@@ -83,6 +83,9 @@ namespace MusafirEx.CncSage.Editor
                 return;
             }
 
+            if (!ConfirmUnsupportedNewMeshes(assetPath, model))
+                return;
+
             string originalPath = Path.GetFullPath(assetPath);
             string directory = Path.GetDirectoryName(originalPath);
             string defaultName = Path.GetFileNameWithoutExtension(assetPath) +
@@ -173,6 +176,64 @@ namespace MusafirEx.CncSage.Editor
                 EditorUtility.DisplayDialog("C&C SAGE Export failed",
                     ex.Message + "\n\nOriginal W3X has not been modified.", "OK");
             }
+        }
+
+        private static bool ConfirmUnsupportedNewMeshes(
+            string sourcePath, GameObject edited)
+        {
+            var original = AssetDatabase.LoadAssetAtPath<GameObject>(
+                sourcePath);
+            if (original == null || edited == null ||
+                original == edited)
+                return true;
+
+            var sourceIds = new System.Collections.Generic.HashSet<string>(
+                original.GetComponentsInChildren<CncSageMeshIdentity>(true)
+                    .Select(x => x.SageIdentifier)
+                    .Where(x => !string.IsNullOrEmpty(x)),
+                StringComparer.OrdinalIgnoreCase);
+
+            var newIds = edited.GetComponentsInChildren<
+                    CncSageMeshIdentity>(true)
+                .Where(x => !string.IsNullOrEmpty(x.SageIdentifier) &&
+                    !sourceIds.Contains(x.SageIdentifier) &&
+                    (x.GetComponent<MeshFilter>()?.sharedMesh != null ||
+                     x.GetComponent<SkinnedMeshRenderer>()?.sharedMesh != null))
+                .Select(x => x.SageIdentifier).Distinct(
+                    StringComparer.OrdinalIgnoreCase).ToArray();
+
+            var untagged = edited.GetComponentsInChildren<MeshFilter>(true)
+                .Where(x => x.sharedMesh != null &&
+                    x.GetComponent<CncSageMeshIdentity>() == null)
+                .Select(x => x.name)
+                .Concat(edited.GetComponentsInChildren<
+                    SkinnedMeshRenderer>(true)
+                    .Where(x => x.sharedMesh != null &&
+                        x.GetComponent<CncSageMeshIdentity>() == null)
+                    .Select(x => x.name))
+                .Distinct().ToArray();
+
+            if (newIds.Length == 0 && untagged.Length == 0)
+                return true;
+
+            string message = "WARNING: The selected editable prefab has " +
+                "meshes that Phase 2B cannot export.\n\n" +
+                (newIds.Length == 0 ? "" :
+                    "New mesh identities (not in original W3X):\n" +
+                    string.Join("\n", newIds.Take(20).ToArray()) + "\n\n") +
+                (untagged.Length == 0 ? "" :
+                    "Mesh objects without CncSageMeshIdentity:\n" +
+                    string.Join("\n", untagged.Take(20).ToArray()) + "\n\n") +
+                "These meshes will NOT be present in the output W3X. " +
+                "Adding CncSageMeshIdentity alone does not implement " +
+                "new W3DMesh export. Cancel is recommended until Phase 2C.";
+            Debug.LogWarning("[C&C SAGE Phase 2] " +
+                "Unexportable new meshes detected.\n" + message);
+            // The first button is intentionally the SAFE default.
+            bool cancel = EditorUtility.DisplayDialog(
+                "C&C SAGE: Missing Mesh Risk",
+                message, "Cancel Export", "Continue Without New Meshes");
+            return !cancel;
         }
 
         [MenuItem(MenuPath, true)]

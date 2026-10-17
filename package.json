@@ -1,6 +1,6 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "displayName": "C&C SAGE Model Tools",
   "description": "Experimental Phase 2B W3X XML exporter with linked editable Project prefabs, plus guarded mesh, skin, pivot and shader texture export.",
   "unity": "2022.3",
