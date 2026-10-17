@@ -84,9 +84,12 @@ namespace MusafirEx.CncSage.Editor
                     W3xExportCore.Save(exported, temp);
                     XDocument reloaded = W3xExportCore.LoadSource(temp);
                     W3xExportCore.ValidateMetadataPreservation(original, reloaded);
+                    // Replace atomically on the same filesystem, preserving
+                    // an existing export if the replacement operation fails.
                     if (File.Exists(destination))
-                        File.Delete(destination);
-                    File.Move(temp, destination);
+                        File.Replace(temp, destination, null);
+                    else
+                        File.Move(temp, destination);
                 }
                 finally
                 {

@@ -81,8 +81,48 @@ namespace MusafirEx.CncSage.Editor
                 }
                 Check(topologyRejected, "Topology/winding edit must be rejected.");
 
+                // Vertex movement is exported only if source spatial metadata
+                // can be reconstructed without corrupting AABTree data.
+                mesh.triangles = new[] { 0, 2, 1 };
+                var positions = mesh.vertices;
+                positions[0] = new Vector3(0.125f, 0f, 0f);
+                mesh.vertices = positions;
+                result = W3xExportCore.BuildDocument(original, root, out report);
+                Check(report.ChangedVertices == 1,
+                    "Expected one modified static vertex.");
+
+                var treeBacked = new XDocument(original);
+                var w3mesh = treeBacked.Descendants()
+                    .First(x => x.Name.LocalName == "W3DMesh");
+                w3mesh.Add(new XElement(w3mesh.Name.Namespace + "AABTree"));
+                bool unsafeSpatialTreeRejected = false;
+                try
+                {
+                    W3xExportCore.BuildDocument(treeBacked, root, out report);
+                }
+                catch (InvalidDataException)
+                {
+                    unsafeSpatialTreeRejected = true;
+                }
+                Check(unsafeSpatialTreeRejected,
+                    "Edited vertices with source AABTree must be rejected.");
+
+                var skinSource = new XDocument(original);
+                var skinNode = skinSource.Descendants()
+                    .First(x => x.Name.LocalName == "W3DMesh");
+                skinNode.SetAttributeValue("GeometryType", "Skin");
+                var skinResult = W3xExportCore.BuildDocument(
+                    skinSource, root, out report);
+                Check(report.SkinnedMeshesPreserved == 1 &&
+                    report.StaticMeshesExported == 0,
+                    "Source skin mesh must remain unchanged.");
+                Check(XNode.DeepEquals(skinNode,
+                    skinResult.Descendants().First(x => x.Name.LocalName == "W3DMesh")),
+                    "Skinned W3X source XML must be byte-semantically preserved.");
+
                 Debug.Log("[C&C SAGE Phase 2] Exporter self-test PASS: " +
-                    "source preservation, static UV edits, topology guard.");
+                    "metadata, static UV/vertex edits, topology guard, " +
+                    "AABTree guard, source-preserved skin.");
             }
             catch (Exception ex)
             {
