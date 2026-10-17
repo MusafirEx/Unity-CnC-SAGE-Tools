@@ -127,13 +127,15 @@ namespace MusafirEx.CncSage.Editor
 
                 string prefabPath = AssetDatabase.GenerateUniqueAssetPath(
                     OutputFolder + "/" + prefix + ".prefab");
+                // Track the path before SaveAsPrefabAsset in case Unity
+                // creates a partial file and then reports an error.
+                createdPaths.Add(prefabPath);
                 bool success;
                 var saved = PrefabUtility.SaveAsPrefabAsset(
                     temporary, prefabPath, out success);
                 if (!success || saved == null)
                     throw new IOException("Unity could not save the editable prefab.");
 
-                createdPaths.Add(prefabPath);
                 AssetDatabase.SaveAssets();
                 var editableAsset = AssetDatabase.LoadAssetAtPath<GameObject>(
                     prefabPath);
