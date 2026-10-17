@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AssetDeclaration xmlns="uri:ea.com:eala:asset">
+  <W3DHierarchy id="TEST_RIG">
+    <Pivot Name="ROOT" NameID="0" Parent="-1">
+      <Translation X="0" Y="0" Z="0" />
+      <Rotation W="1" X="0" Y="0" Z="0" />
+    </Pivot>
+    <Pivot Name="WHEEL" NameID="1" Parent="0">
+      <Translation X="1" Y="0" Z="0" />
+      <Rotation W="1" X="0" Y="0" Z="0" />
+    </Pivot>
+  </W3DHierarchy>
+  <W3DMesh id="TEST.SKIN" GeometryType="Skin">
+    <Vertices>
+      <V X="0" Y="0" Z="0" />
+      <V X="1" Y="0" Z="0" />
+      <V X="0" Y="1" Z="0" />
+    </Vertices>
+    <Normals>
+      <N X="0" Y="0" Z="1" />
+      <N X="0" Y="0" Z="1" />
+      <N X="0" Y="0" Z="1" />
+    </Normals>
+    <TexCoords>
+      <T X="0" Y="0" />
+      <T X="1" Y="0" />
+      <T X="0" Y="1" />
+    </TexCoords>
+    <BoneInfluences>
+      <I Bone="0" Weight="1" />
+      <I Bone="1" Weight="1" />
+      <I Bone="1" Weight="1" />
+    </BoneInfluences>
+    <Triangles>
+      <T><V>0</V><V>1</V><V>2</V><Nrm X="0" Y="0" Z="1" /><Dist>0</Dist></T>
+    </Triangles>
+    <FXShader ShaderName="Phase1B_Test" TechniqueIndex="0">
+      <Constants>
+        <Float Name="DiffuseColor"><Value>1</Value><Value>1</Value><Value>1</Value><Value>1</Value></Float>
+      </Constants>
+    </FXShader>
+  </W3DMesh>
+  <W3DContainer id="TEST_MODEL" Hierarchy="TEST_RIG">
+    <SubObject SubObjectID="SKIN" BoneIndex="0">
+      <RenderObject><Mesh>TEST.SKIN</Mesh></RenderObject>
+    </SubObject>
+  </W3DContainer>
+</AssetDeclaration>
