@@ -22,6 +22,8 @@ namespace MusafirEx.CncSage.Editor
     internal sealed class W3xDocument
     {
         public readonly List<W3xMeshData> Meshes = new List<W3xMeshData>();
+        // Mesh, hierarchy and animation declarations share the W3X extension.
+        public readonly List<string> Declarations = new List<string>();
         public readonly List<string> SourcePaths = new List<string>();
         public readonly List<string> Warnings = new List<string>();
     }
@@ -44,10 +46,12 @@ namespace MusafirEx.CncSage.Editor
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             ReadFile(fullPath, result, visited, 0, true);
 
-            if (result.Meshes.Count == 0)
+            // Valid SAGE W3X sources can contain no meshes (for example _SKL
+            // hierarchies and _IDLA / _ATKA animations). Keep a placeholder.
+            if (result.Declarations.Count == 0)
                 throw new InvalidDataException(
-                    "No W3DMesh geometry found. This importer currently needs embedded mesh data " +
-                    "or resolvable local <Include> mesh files.");
+                    "No supported W3X declarations found. Expected W3DMesh, " +
+                    "W3DHierarchy, W3DAnimation, W3DContainer, W3DCollisionBox or Texture.");
 
             return result;
         }
@@ -81,16 +85,35 @@ namespace MusafirEx.CncSage.Editor
                 document = XDocument.Load(reader);
 
             if (document.Root == null || document.Root.Name.LocalName != "AssetDeclaration")
-                throw new InvalidDataException("Expected W3X AssetDeclaration in " + fullPath);
+            {
+                if (isMain)
+                    throw new InvalidDataException("Expected W3X AssetDeclaration in " + fullPath);
+                // Some ART: references are XML metadata rather than W3X sources.
+                result.Warnings.Add("Skipped non-W3X include: " + fullPath);
+                return;
+            }
 
             result.SourcePaths.Add(fullPath);
             foreach (var node in document.Root.Elements())
             {
-                if (node.Name.LocalName == "W3DMesh")
+                string kind = node.Name.LocalName;
+                if (kind == "W3DMesh")
                 {
-                    result.Meshes.Add(ParseMesh(node));
+                    var mesh = ParseMesh(node);
+                    result.Meshes.Add(mesh);
+                    result.Declarations.Add("W3DMesh: " + mesh.Identifier);
                 }
-                else if (node.Name.LocalName == "Includes")
+                else if (kind == "W3DHierarchy" || kind == "W3DAnimation" ||
+                         kind == "W3DContainer" || kind == "W3DCollisionBox" ||
+                         kind == "Texture")
+                {
+                    // Recognition only. Do not misrepresent these as decoded
+                    // skeletons, animation clips, containers or materials.
+                    string identifier = (string)node.Attribute("id");
+                    result.Declarations.Add(kind +
+                        (string.IsNullOrWhiteSpace(identifier) ? "" : ": " + identifier));
+                }
+                else if (kind == "Includes")
                 {
                     foreach (var include in node.Elements()
                                                 .Where(e => e.Name.LocalName == "Include"))
