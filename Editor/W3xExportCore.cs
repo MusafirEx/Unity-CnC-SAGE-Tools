@@ -17,13 +17,26 @@ namespace MusafirEx.CncSage.Editor
     /// </summary>
     internal static class W3xExportCore
     {
+        internal sealed class ExportOptions
+        {
+            // Default values preserve all Phase 2A behavior.
+            public bool ExportPivotTransforms;
+            public bool ExportSkinWeightsAndVertices;
+            public bool ExportMaterialTextures;
+        }
+
         internal sealed class Report
         {
             public int SourceMeshes;
             public int StaticMeshesExported;
             public int SkinnedMeshesPreserved;
+            public int SkinnedMeshesExported;
             public int ChangedVertices;
             public int ChangedUvs;
+            public int ChangedPivots;
+            public int ChangedShaderTextures;
+            public int ChangedSkinWeights;
+            public int ChangedSkinVertices;
             public readonly List<string> Notes = new List<string>();
 
             public string Describe()
@@ -31,8 +44,13 @@ namespace MusafirEx.CncSage.Editor
                 return "Source meshes: " + SourceMeshes +
                     "\nStatic meshes exported: " + StaticMeshesExported +
                     "\nSkin meshes preserved as source XML: " + SkinnedMeshesPreserved +
+                    "\nSkin meshes advanced-exported: " + SkinnedMeshesExported +
                     "\nChanged vertex coordinates: " + ChangedVertices +
                     "\nChanged UV coordinates: " + ChangedUvs +
+                    "\nChanged pivot transforms: " + ChangedPivots +
+                    "\nChanged FXShader texture references: " + ChangedShaderTextures +
+                    "\nChanged skin weights: " + ChangedSkinWeights +
+                    "\nChanged skin source vertices: " + ChangedSkinVertices +
                     (Notes.Count == 0 ? "" : "\n" + string.Join("\n", Notes.ToArray()));
             }
         }
@@ -40,6 +58,16 @@ namespace MusafirEx.CncSage.Editor
         internal static XDocument BuildDocument(
             XDocument original, GameObject selectedModel, out Report report)
         {
+            return BuildDocument(original, selectedModel, new ExportOptions(),
+                out report);
+        }
+
+        internal static XDocument BuildDocument(
+            XDocument original, GameObject selectedModel,
+            ExportOptions options, out Report report)
+        {
+            if (options == null)
+                options = new ExportOptions();
             if (original == null || original.Root == null ||
                 original.Root.Name.LocalName != "AssetDeclaration")
                 throw new InvalidDataException("The source is not a W3X AssetDeclaration.");
@@ -94,23 +122,38 @@ namespace MusafirEx.CncSage.Editor
                     // Phase 1B transforms SAGE skin vertices to rest-pose space.
                     // Re-exporting them directly would corrupt their source
                     // coordinates. Preserve their original complete XML block.
-                    report.SkinnedMeshesPreserved++;
-                    report.Notes.Add("SKIN " + id +
-                        ": preserved original W3X geometry, bone influences and FXShader.");
-                    continue;
+                    if (options.ExportSkinWeightsAndVertices)
+                    {
+                        W3xExportAdvanced.PatchSkin(sourceMesh, part, report);
+                        report.SkinnedMeshesExported++;
+                    }
+                    else
+                    {
+                        report.SkinnedMeshesPreserved++;
+                        report.Notes.Add("SKIN " + id +
+                            ": preserved original W3X geometry, bone influences and FXShader.");
+                    }
+                }
+                else
+                {
+                    PatchStaticMesh(sourceMesh, mesh, id, report);
+                    report.StaticMeshesExported++;
                 }
 
-                PatchStaticMesh(sourceMesh, mesh, id, report);
-                report.StaticMeshesExported++;
+                if (options.ExportMaterialTextures)
+                    W3xExportAdvanced.PatchShaderTextures(sourceMesh, part, report);
             }
 
-            report.Notes.Add("Scene transform/pivot edits, material overrides, " +
-                "skinned vertex edits and changed mesh topology are not exported.");
+            if (options.ExportPivotTransforms)
+                W3xExportAdvanced.PatchLocalPivots(output, selectedModel, report);
+
+            report.Notes.Add("New topology, collision tree rebuild, animation " +
+                "tracks and external ART dependencies are not exported.");
             report.Notes.Add("External ART: include dependencies are unchanged.");
             return output;
         }
 
-        private static void PatchStaticMesh(
+        internal static void PatchStaticMesh(
             XElement source, Mesh unityMesh, string id, Report report)
         {
             if (unityMesh.subMeshCount != 1)
@@ -200,7 +243,7 @@ namespace MusafirEx.CncSage.Editor
             // Never remove an unknown third UV set or fabricate shader stages.
         }
 
-        private static void PatchUv(
+        internal static void PatchUv(
             XElement node, Vector2[] values, int vertices,
             string id, Report report)
         {
@@ -224,7 +267,7 @@ namespace MusafirEx.CncSage.Editor
             }
         }
 
-        private static void UpdateBounds(XElement mesh, Vector3[] vertices)
+        internal static void UpdateBounds(XElement mesh, Vector3[] vertices)
         {
             if (vertices.Length == 0)
                 return;
@@ -258,7 +301,7 @@ namespace MusafirEx.CncSage.Editor
             }
         }
 
-        private static void UpdateTrianglePlanes(
+        internal static void UpdateTrianglePlanes(
             XElement[] triangleNodes,
             Vector3[] originals, Vector3[] positions)
         {
@@ -295,7 +338,7 @@ namespace MusafirEx.CncSage.Editor
             }
         }
 
-        private static int ParseIndex(XElement node, string id)
+        internal static int ParseIndex(XElement node, string id)
         {
             int value;
             if (!int.TryParse(node.Value, NumberStyles.Integer,
@@ -304,7 +347,7 @@ namespace MusafirEx.CncSage.Editor
             return value;
         }
 
-        private static float ParseFloat(string value)
+        internal static float ParseFloat(string value)
         {
             float result;
             if (!float.TryParse(value, NumberStyles.Float,
@@ -314,14 +357,14 @@ namespace MusafirEx.CncSage.Editor
             return result;
         }
 
-        private static string Num(float value)
+        internal static string Num(float value)
         {
             if (float.IsNaN(value) || float.IsInfinity(value))
                 throw new InvalidDataException("Unity mesh contains an invalid number.");
             return value.ToString("R", CultureInfo.InvariantCulture);
         }
 
-        private static Vector3 ReadSourceVector3(XElement node)
+        internal static Vector3 ReadSourceVector3(XElement node)
         {
             return new Vector3(
                 ParseFloat((string)node.Attribute("X")),
@@ -329,29 +372,29 @@ namespace MusafirEx.CncSage.Editor
                 ParseFloat((string)node.Attribute("Z")));
         }
 
-        private static void WriteVector3(XElement node, Vector3 value)
+        internal static void WriteVector3(XElement node, Vector3 value)
         {
             node.SetAttributeValue("X", Num(value.x));
             node.SetAttributeValue("Y", Num(value.y));
             node.SetAttributeValue("Z", Num(value.z));
         }
 
-        private static bool Close(Vector3 a, Vector3 b)
+        internal static bool Close(Vector3 a, Vector3 b)
         {
             return (a - b).sqrMagnitude <= 0.0000000001f;
         }
 
-        private static Vector3 ToSage(Vector3 unity)
+        internal static Vector3 ToSage(Vector3 unity)
         {
             return new Vector3(unity.x, unity.z, unity.y);
         }
 
-        private static XElement Child(XElement parent, string name)
+        internal static XElement Child(XElement parent, string name)
         {
             return parent.Elements().FirstOrDefault(x => x.Name.LocalName == name);
         }
 
-        private static IEnumerable<XElement> Children(XElement parent, string name)
+        internal static IEnumerable<XElement> Children(XElement parent, string name)
         {
             return parent.Elements().Where(x => x.Name.LocalName == name);
         }
@@ -382,6 +425,12 @@ namespace MusafirEx.CncSage.Editor
         internal static void ValidateMetadataPreservation(
             XDocument original, XDocument exported)
         {
+            ValidateMetadataPreservation(original, exported, false);
+        }
+
+        internal static void ValidateMetadataPreservation(
+            XDocument original, XDocument exported, bool allowPivotTransforms)
+        {
             var left = original.Root.Elements()
                 .Where(x => x.Name.LocalName != "W3DMesh").ToArray();
             var right = exported.Root.Elements()
@@ -390,10 +439,15 @@ namespace MusafirEx.CncSage.Editor
                 throw new InvalidDataException(
                     "Non-mesh declaration count changed during export.");
             for (int i = 0; i < left.Length; i++)
-                if (!XNode.DeepEquals(left[i], right[i]))
+            {
+                if (allowPivotTransforms &&
+                    left[i].Name.LocalName == "W3DHierarchy")
+                    W3xExportAdvanced.ValidatePivotMetadata(left[i], right[i]);
+                else if (!XNode.DeepEquals(left[i], right[i]))
                     throw new InvalidDataException(
                         "Source declaration was unexpectedly changed: " +
                         left[i].Name.LocalName);
+            }
         }
     }
 }

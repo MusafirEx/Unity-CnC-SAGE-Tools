@@ -13,8 +13,65 @@ namespace MusafirEx.CncSage.Editor
         private const string MenuPath =
             "Tools/C&C SAGE/Export Selected W3X (Safe Roundtrip)...";
 
+        private const string SkinMenuPath =
+            "Tools/C&C SAGE/Export Selected W3X (Skin & Shader Textures)...";
+        private const string PivotMenuPath =
+            "Tools/C&C SAGE/Export Selected W3X (Local Pivots)...";
+
         [MenuItem(MenuPath)]
         private static void ExportSelected()
+        {
+            ExportWithOptions(new W3xExportCore.ExportOptions(),
+                "_unity_roundtrip");
+        }
+
+        [MenuItem(SkinMenuPath)]
+        private static void ExportAdvancedSkin()
+        {
+            if (!EditorUtility.DisplayDialog("C&C SAGE Phase 2B",
+                "Experimental: export edited skin vertices/weights and existing " +
+                "FXShader texture references. Bone indices and mesh topology " +
+                "must be unchanged. Source files are never overwritten. " +
+                "Verify results against Blender before game use.",
+                "Export copy", "Cancel"))
+                return;
+            ExportWithOptions(new W3xExportCore.ExportOptions
+            {
+                ExportSkinWeightsAndVertices = true,
+                ExportMaterialTextures = true
+            }, "_unity_skin");
+        }
+
+        [MenuItem(PivotMenuPath)]
+        private static void ExportAdvancedPivots()
+        {
+            if (!EditorUtility.DisplayDialog("C&C SAGE Phase 2B",
+                "Experimental: export edited LOCAL W3DHierarchy pivots. " +
+                "For models that reference a separate _SKL.W3X, select " +
+                "the _SKL asset instead. Pivots using FixupMatrix cannot " +
+                "be edited by this exporter.",
+                "Export copy", "Cancel"))
+                return;
+            ExportWithOptions(new W3xExportCore.ExportOptions
+            {
+                ExportPivotTransforms = true
+            }, "_unity_pivots");
+        }
+
+        [MenuItem(SkinMenuPath, true)]
+        private static bool ValidateAdvancedSkin()
+        {
+            return ValidateSelection();
+        }
+
+        [MenuItem(PivotMenuPath, true)]
+        private static bool ValidateAdvancedPivots()
+        {
+            return ValidateSelection();
+        }
+
+        private static void ExportWithOptions(
+            W3xExportCore.ExportOptions options, string suffix)
         {
             string assetPath;
             GameObject model;
@@ -29,7 +86,7 @@ namespace MusafirEx.CncSage.Editor
             string originalPath = Path.GetFullPath(assetPath);
             string directory = Path.GetDirectoryName(originalPath);
             string defaultName = Path.GetFileNameWithoutExtension(assetPath) +
-                "_unity_roundtrip";
+                suffix;
 
             string destination = EditorUtility.SaveFilePanel(
                 "Export W3X source-preserving copy", directory,
@@ -68,11 +125,12 @@ namespace MusafirEx.CncSage.Editor
 
                 W3xExportCore.Report report;
                 XDocument exported = W3xExportCore.BuildDocument(
-                    original, model, out report);
+                    original, model, options, out report);
 
                 // Ensure all nonmesh declarations (including includes, material
                 // references, hierarchies, collisions and animations) survive.
-                W3xExportCore.ValidateMetadataPreservation(original, exported);
+                W3xExportCore.ValidateMetadataPreservation(original, exported,
+                    options.ExportPivotTransforms);
 
                 // Write to a staging file, validate after serialization, then
                 // move to destination. Failure does not damage existing W3X.
@@ -83,7 +141,8 @@ namespace MusafirEx.CncSage.Editor
                 {
                     W3xExportCore.Save(exported, temp);
                     XDocument reloaded = W3xExportCore.LoadSource(temp);
-                    W3xExportCore.ValidateMetadataPreservation(original, reloaded);
+                    W3xExportCore.ValidateMetadataPreservation(original, reloaded,
+                        options.ExportPivotTransforms);
                     // Replace atomically on the same filesystem, preserving
                     // an existing export if the replacement operation fails.
                     if (File.Exists(destination))
@@ -104,8 +163,9 @@ namespace MusafirEx.CncSage.Editor
                 EditorUtility.DisplayDialog("C&C SAGE Export",
                     "Exported a new W3X XML file.\n\n" +
                     report.Describe() +
-                    "\n\nOnly source-preserving static mesh changes are exported. " +
-                    "This is not yet a Kane's Wrath-compatible asset build.", "OK");
+                    "\n\nOnly explicitly selected export modes can modify " +
+                    "skinning, pivot or texture references. This is not yet " +
+                    "a Kane's Wrath-compatible asset build.", "OK");
             }
             catch (Exception ex)
             {
