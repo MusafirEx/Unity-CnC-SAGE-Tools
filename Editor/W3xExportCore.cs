@@ -30,6 +30,7 @@ namespace MusafirEx.CncSage.Editor
             public int SourceMeshes;
             public int StaticMeshesExported;
             public int SkinnedMeshesPreserved;
+            public int SkinnedMeshesExported;
             public int ChangedVertices;
             public int ChangedUvs;
             public int ChangedPivots;
@@ -43,6 +44,7 @@ namespace MusafirEx.CncSage.Editor
                 return "Source meshes: " + SourceMeshes +
                     "\nStatic meshes exported: " + StaticMeshesExported +
                     "\nSkin meshes preserved as source XML: " + SkinnedMeshesPreserved +
+                    "\nSkin meshes advanced-exported: " + SkinnedMeshesExported +
                     "\nChanged vertex coordinates: " + ChangedVertices +
                     "\nChanged UV coordinates: " + ChangedUvs +
                     "\nChanged pivot transforms: " + ChangedPivots +
@@ -121,7 +123,10 @@ namespace MusafirEx.CncSage.Editor
                     // Re-exporting them directly would corrupt their source
                     // coordinates. Preserve their original complete XML block.
                     if (options.ExportSkinWeightsAndVertices)
+                    {
                         W3xExportAdvanced.PatchSkin(sourceMesh, part, report);
+                        report.SkinnedMeshesExported++;
+                    }
                     else
                     {
                         report.SkinnedMeshesPreserved++;

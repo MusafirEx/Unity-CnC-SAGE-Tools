@@ -317,6 +317,8 @@ namespace MusafirEx.CncSage.Editor
                 new Vector3[mesh.vertexCount] : null;
             var outputWeights0 = new float[mesh.vertexCount];
             var outputWeights1 = new float[mesh.vertexCount];
+            var weightModified = new bool[mesh.vertexCount];
+            var vertexModified = new bool[mesh.vertexCount];
             int changedVertices = 0;
             int changedWeights = 0;
 
@@ -364,8 +366,10 @@ namespace MusafirEx.CncSage.Editor
                     old1 = 0;
                     oldTotal = 1;
                 }
-                if (Mathf.Abs(weight0 - old0 / oldTotal) > WeightEpsilon ||
-                    Mathf.Abs(weight1 - old1 / oldTotal) > WeightEpsilon)
+                weightModified[i] =
+                    Mathf.Abs(weight0 - old0 / oldTotal) > WeightEpsilon ||
+                    Mathf.Abs(weight1 - old1 / oldTotal) > WeightEpsilon;
+                if (weightModified[i])
                     changedWeights++;
 
                 // Undo the Phase 1B rest-pose bake using a weighted affine
@@ -391,7 +395,9 @@ namespace MusafirEx.CncSage.Editor
                     authoredVertices[i]);
                 Vector3 sourceSage = W3xExportCore.ToSage(sourceUnity);
                 outputVertices[i] = sourceSage;
-                if (Vector3.Distance(sourceVertices[i], sourceSage) > PositionEpsilon)
+                vertexModified[i] =
+                    Vector3.Distance(sourceVertices[i], sourceSage) > PositionEpsilon;
+                if (vertexModified[i])
                     changedVertices++;
 
                 if (haveNormals)
@@ -416,10 +422,10 @@ namespace MusafirEx.CncSage.Editor
 
             for (int i = 0; i < mesh.vertexCount; i++)
             {
-                if (changedVertices > 0)
+                if (vertexModified[i])
                     W3xExportCore.WriteVector3(originalVertexNodes[i],
                         outputVertices[i]);
-                if (changedWeights > 0)
+                if (weightModified[i])
                 {
                     primary[i].SetAttributeValue("Weight",
                         W3xExportCore.Num(outputWeights0[i]));
@@ -439,8 +445,9 @@ namespace MusafirEx.CncSage.Editor
 
             if (haveNormals && (changedWeights > 0 || changedVertices > 0))
                 for (int i = 0; i < mesh.vertexCount; i++)
-                    W3xExportCore.WriteVector3(sourceNormalNodes[i],
-                        outputNormals[i]);
+                    if (weightModified[i] || vertexModified[i])
+                        W3xExportCore.WriteVector3(sourceNormalNodes[i],
+                            outputNormals[i]);
 
             var uv = W3xExportCore.Children(source, "TexCoords")
                 .Take(2).ToArray();
