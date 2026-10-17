@@ -2,158 +2,205 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace MusafirEx.CncSage.Editor
 {
     /// <summary>
-    /// Make an editable scene instance with independent Mesh/Material assets.
-    /// The imported W3X file and imported sub-assets are not modified.
+    /// Creates an editable Project prefab and independent Mesh/Material assets.
+    /// Uses a temporary preview scene; nothing is added to the active scene.
     /// </summary>
     internal static class W3xEditableInstance
     {
         private const string MenuPath =
-            "Tools/C&C SAGE/Create Editable W3X Scene Instance";
+            "Tools/C&C SAGE/Create Editable W3X Project Prefab";
+        private const string OutputFolder = "Assets/CncSageEditable";
 
         [MenuItem(MenuPath)]
         private static void Create()
         {
-            string path = GetSelectedSourcePath();
-            if (string.IsNullOrEmpty(path))
+            string sourcePath = GetSelectedW3xPath();
+            if (string.IsNullOrEmpty(sourcePath))
                 return;
 
-            if (!EditorUtility.DisplayDialog("C&C SAGE Editable Instance",
-                "Create a linked scene instance and save independent copies " +
-                "of its meshes and materials under Assets/CncSageEditable? " +
-                "Original W3X files will not be modified.",
-                "Create editable copy", "Cancel"))
+            if (!EditorUtility.DisplayDialog("C&C SAGE Project Prefab",
+                "Create an editable Project prefab and independent Mesh/Material " +
+                "assets in Assets/CncSageEditable? The original W3X and active " +
+                "scene will not be modified.",
+                "Create Project prefab", "Cancel"))
                 return;
 
-            var source = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            var source = AssetDatabase.LoadAssetAtPath<GameObject>(sourcePath);
             if (source == null)
+            {
+                Debug.LogError("[C&C SAGE] Selected W3X has no imported GameObject.");
                 return;
+            }
 
-            string folder = "Assets/CncSageEditable";
-            if (!AssetDatabase.IsValidFolder(folder))
+            if (!AssetDatabase.IsValidFolder(OutputFolder))
                 AssetDatabase.CreateFolder("Assets", "CncSageEditable");
-            var createdAssets = new List<string>();
-            GameObject instance = null;
+
+            string sourceGuid = AssetDatabase.AssetPathToGUID(sourcePath);
+            if (string.IsNullOrEmpty(sourceGuid))
+            {
+                Debug.LogError("[C&C SAGE] Could not resolve the W3X source GUID.");
+                return;
+            }
+
+            var createdPaths = new List<string>();
+            Scene previewScene = default(Scene);
+            bool previewOpened = false;
+            GameObject temporary = null;
             try
             {
-                instance = PrefabUtility.InstantiatePrefab(source) as GameObject;
-                if (instance == null)
+                previewScene = EditorSceneManager.NewPreviewScene();
+                previewOpened = true;
+                temporary = PrefabUtility.InstantiatePrefab(source,
+                    previewScene) as GameObject;
+                if (temporary == null)
                     throw new InvalidOperationException(
-                        "Cannot instantiate selected W3X model prefab.");
+                        "Could not instantiate the source in a preview scene.");
 
-                instance.name = Path.GetFileNameWithoutExtension(path) +
+                // The saved editable prefab must not require its nested
+                // imported W3X prefab for mesh/transform overrides.
+                if (PrefabUtility.IsAnyPrefabInstanceRoot(temporary))
+                    PrefabUtility.UnpackPrefabInstance(temporary,
+                        PrefabUnpackMode.Completely,
+                        InteractionMode.AutomatedAction);
+
+                string prefix = Path.GetFileNameWithoutExtension(sourcePath) +
                     "_Editable";
-                Undo.RegisterCreatedObjectUndo(instance,
-                    "Create editable C&C SAGE W3X model");
+                temporary.name = prefix;
 
-                var copies = new Dictionary<Mesh, Mesh>();
+                var link = temporary.GetComponent<CncSageEditableSource>();
+                if (link == null)
+                    link = temporary.AddComponent<CncSageEditableSource>();
+                link.SetSource(sourceGuid, sourcePath);
+
                 int meshesCopied = 0;
-                foreach (var filter in instance.GetComponentsInChildren<MeshFilter>(true))
+                var meshCopies = new Dictionary<Mesh, Mesh>();
+                foreach (var filter in temporary
+                             .GetComponentsInChildren<MeshFilter>(true))
                 {
-                    if (filter.sharedMesh == null)
-                        continue;
-                    filter.sharedMesh = CopyMesh(filter.sharedMesh, copies,
-                        folder, instance.name, ref meshesCopied,
-                        createdAssets);
+                    if (filter.sharedMesh != null)
+                        filter.sharedMesh = CopyMesh(filter.sharedMesh,
+                            meshCopies, prefix, ref meshesCopied, createdPaths);
                 }
-                foreach (var skin in instance.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                foreach (var skin in temporary
+                             .GetComponentsInChildren<SkinnedMeshRenderer>(true))
                 {
-                    if (skin.sharedMesh == null)
-                        continue;
-                    skin.sharedMesh = CopyMesh(skin.sharedMesh, copies,
-                        folder, instance.name, ref meshesCopied,
-                        createdAssets);
+                    if (skin.sharedMesh != null)
+                        skin.sharedMesh = CopyMesh(skin.sharedMesh,
+                            meshCopies, prefix, ref meshesCopied, createdPaths);
                 }
 
-                var materialCopies = new Dictionary<Material, Material>();
                 int materialsCopied = 0;
-                foreach (var renderer in instance.GetComponentsInChildren<Renderer>(true))
+                var materialCopies = new Dictionary<Material, Material>();
+                foreach (var renderer in temporary
+                             .GetComponentsInChildren<Renderer>(true))
                 {
                     var materials = renderer.sharedMaterials;
-                    bool changed = false;
                     for (int i = 0; i < materials.Length; i++)
                     {
-                        var old = materials[i];
-                        if (old == null)
+                        Material original = materials[i];
+                        if (original == null)
                             continue;
-                        Material duplicate;
-                        if (!materialCopies.TryGetValue(old, out duplicate))
+                        Material copy;
+                        if (!materialCopies.TryGetValue(original, out copy))
                         {
-                            duplicate = new Material(old);
-                            string output = AssetDatabase.GenerateUniqueAssetPath(
-                                folder + "/" + instance.name + "_Material_" +
-                                materialsCopied + ".mat");
-                            AssetDatabase.CreateAsset(duplicate, output);
-                            createdAssets.Add(output);
-                            materialCopies.Add(old, duplicate);
+                            copy = new Material(original);
+                            string materialPath =
+                                AssetDatabase.GenerateUniqueAssetPath(
+                                    OutputFolder + "/" + prefix + "_Material_" +
+                                    materialsCopied + ".mat");
+                            AssetDatabase.CreateAsset(copy, materialPath);
+                            createdPaths.Add(materialPath);
+                            materialCopies.Add(original, copy);
                             materialsCopied++;
                         }
-                        materials[i] = duplicate;
-                        changed = true;
+                        materials[i] = copy;
                     }
-                    if (changed)
-                        renderer.sharedMaterials = materials;
+                    renderer.sharedMaterials = materials;
                 }
 
+                string prefabPath = AssetDatabase.GenerateUniqueAssetPath(
+                    OutputFolder + "/" + prefix + ".prefab");
+                bool success;
+                var saved = PrefabUtility.SaveAsPrefabAsset(
+                    temporary, prefabPath, out success);
+                if (!success || saved == null)
+                    throw new IOException("Unity could not save the editable prefab.");
+
+                createdPaths.Add(prefabPath);
                 AssetDatabase.SaveAssets();
-                Selection.activeGameObject = instance;
-                Debug.Log("[C&C SAGE Phase 2B] Editable instance created: " +
-                    instance.name + " | mesh assets=" + meshesCopied +
-                    " | material assets=" + materialsCopied +
-                    " | folder=" + folder +
-                    ". Export the scene instance, not the imported source asset.");
+                var editableAsset = AssetDatabase.LoadAssetAtPath<GameObject>(
+                    prefabPath);
+                if (editableAsset == null ||
+                    editableAsset.GetComponent<CncSageEditableSource>() == null)
+                    throw new InvalidDataException(
+                        "Saved prefab lost the original W3X source link.");
+
+                Selection.activeObject = editableAsset;
+                EditorGUIUtility.PingObject(editableAsset);
+                Debug.Log("[C&C SAGE Phase 2B] Editable Project prefab ready: " +
+                    prefabPath + " | copied meshes=" + meshesCopied +
+                    " | copied materials=" + materialsCopied +
+                    " | source W3X=" + sourcePath +
+                    " | active scene not modified.");
             }
-            catch (Exception ex)
+            catch (Exception e)
             {
-                if (instance != null)
-                    UnityEngine.Object.DestroyImmediate(instance);
-                for (int i = createdAssets.Count - 1; i >= 0; i--)
-                    AssetDatabase.DeleteAsset(createdAssets[i]);
-                Debug.LogError("[C&C SAGE Phase 2B] Cannot create editable copy: " +
-                    ex);
+                for (int i = createdPaths.Count - 1; i >= 0; i--)
+                    AssetDatabase.DeleteAsset(createdPaths[i]);
+                Debug.LogError(
+                    "[C&C SAGE Phase 2B] Project prefab creation failed: " + e);
+            }
+            finally
+            {
+                if (temporary != null)
+                    UnityEngine.Object.DestroyImmediate(temporary);
+                if (previewOpened)
+                    EditorSceneManager.ClosePreviewScene(previewScene);
             }
         }
 
-        private static Mesh CopyMesh(Mesh source,
-            Dictionary<Mesh, Mesh> copies,
-            string folder, string prefix, ref int count,
-            List<string> createdAssets)
+        private static Mesh CopyMesh(Mesh original,
+            Dictionary<Mesh, Mesh> copies, string prefix,
+            ref int index, List<string> createdPaths)
         {
-            Mesh result;
-            if (copies.TryGetValue(source, out result))
-                return result;
-
-            result = UnityEngine.Object.Instantiate(source);
-            result.name = source.name + "_Editable";
+            Mesh copy;
+            if (copies.TryGetValue(original, out copy))
+                return copy;
+            copy = UnityEngine.Object.Instantiate(original);
+            copy.name = original.name + "_Editable";
             string path = AssetDatabase.GenerateUniqueAssetPath(
-                folder + "/" + prefix + "_Mesh_" + count + ".asset");
-            AssetDatabase.CreateAsset(result, path);
-            copies.Add(source, result);
-            createdAssets.Add(path);
-            count++;
-            return result;
+                OutputFolder + "/" + prefix + "_Mesh_" + index + ".asset");
+            AssetDatabase.CreateAsset(copy, path);
+            createdPaths.Add(path);
+            copies.Add(original, copy);
+            index++;
+            return copy;
         }
 
         [MenuItem(MenuPath, true)]
-        private static bool CanCreate()
+        private static bool Validate()
         {
-            return !string.IsNullOrEmpty(GetSelectedSourcePath());
+            return !string.IsNullOrEmpty(GetSelectedW3xPath());
         }
 
-        private static string GetSelectedSourcePath()
+        private static string GetSelectedW3xPath()
         {
-            if (Selection.activeGameObject == null)
+            var selected = Selection.activeObject;
+            if (selected == null)
                 return null;
-            string path = AssetDatabase.GetAssetPath(Selection.activeGameObject);
-            if (string.IsNullOrEmpty(path))
-                path = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(
-                    Selection.activeGameObject);
-            return !string.IsNullOrEmpty(path) &&
-                path.EndsWith(".w3x", StringComparison.OrdinalIgnoreCase) ?
+            var path = AssetDatabase.GetAssetPath(selected);
+            if (string.IsNullOrEmpty(path) ||
+                !string.Equals(Path.GetExtension(path), ".w3x",
+                    StringComparison.OrdinalIgnoreCase))
+                return null;
+            return AssetDatabase.LoadAssetAtPath<GameObject>(path) != null ?
                 path : null;
         }
     }
