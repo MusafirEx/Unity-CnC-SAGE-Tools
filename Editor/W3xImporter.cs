@@ -10,7 +10,7 @@ namespace MusafirEx.CncSage.Editor
     /// Prototype importer for editable W3X XML geometry.
     /// W3D is a different binary format and is intentionally not registered.
     /// </summary>
-    [ScriptedImporter(1, "w3x")]
+    [ScriptedImporter(2, "w3x")]
     public sealed class W3xImporter : ScriptedImporter
     {
         public override void OnImportAsset(AssetImportContext context)
@@ -34,6 +34,10 @@ namespace MusafirEx.CncSage.Editor
             }
 
             var root = new GameObject(Path.GetFileNameWithoutExtension(context.assetPath));
+            // For source-only W3X hierarchies/animations, this is an intentional
+            // metadata placeholder. Geometry meshes still import as before.
+            root.AddComponent<CncSageSourceInfo>()
+                .SetSourceInfo(document.Declarations.ToArray(), document.Meshes.Count);
             context.AddObjectToAsset("root", root);
             context.SetMainObject(root);
 

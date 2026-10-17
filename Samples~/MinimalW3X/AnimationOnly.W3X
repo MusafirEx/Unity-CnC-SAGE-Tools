@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AssetDeclaration xmlns="uri:ea.com:eala:asset">
+  <W3DAnimation id="DEMO_IDLE" Hierarchy="DEMO_HIERARCHY" NumFrames="2" FrameRate="30">
+    <Channels>
+      <ChannelScalar Type="XTranslation" Pivot="0" FirstFrame="0">
+        <Frame>0</Frame>
+        <Frame>1</Frame>
+      </ChannelScalar>
+    </Channels>
+  </W3DAnimation>
+</AssetDeclaration>
