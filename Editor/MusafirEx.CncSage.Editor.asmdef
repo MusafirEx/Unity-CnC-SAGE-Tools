@@ -1,0 +1,6 @@
+{
+  "name": "MusafirEx.CncSage.Editor",
+  "rootNamespace": "MusafirEx.CncSage.Editor",
+  "references": ["MusafirEx.CncSage.Runtime"],
+  "includePlatforms": ["Editor"]
+}
