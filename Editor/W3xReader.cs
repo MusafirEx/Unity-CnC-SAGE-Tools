@@ -19,11 +19,62 @@ namespace MusafirEx.CncSage.Editor
         public Vector2[] Uvs2;
         public int UvSetCount;
         public int[] TriangleIndices;
+        public W3xBoneInfluence[] BoneInfluences;
+        public W3xBoneInfluence[] SecondaryBoneInfluences;
+        public W3xFxShaderData[] Shaders;
+    }
+
+    internal struct W3xBoneInfluence
+    {
+        public int Bone;
+        public float Weight;
+    }
+
+    internal sealed class W3xFxShaderData
+    {
+        public string Name;
+        public readonly Dictionary<string, string> Properties =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        public string Get(string property)
+        {
+            string result;
+            return Properties.TryGetValue(property, out result) ? result : null;
+        }
+    }
+
+    internal sealed class W3xPivotData
+    {
+        public string Name;
+        public int Parent;
+        public Vector3 Translation;
+        public Quaternion Rotation;
+    }
+
+    internal sealed class W3xHierarchyData
+    {
+        public string Identifier;
+        public readonly List<W3xPivotData> Pivots = new List<W3xPivotData>();
+    }
+
+    internal sealed class W3xSubObjectData
+    {
+        public string Identifier;
+        public int BoneIndex;
+    }
+
+    internal sealed class W3xContainerData
+    {
+        public string Identifier;
+        public string HierarchyName;
+        public readonly List<W3xSubObjectData> SubObjects = new List<W3xSubObjectData>();
     }
 
     internal sealed class W3xDocument
     {
         public readonly List<W3xMeshData> Meshes = new List<W3xMeshData>();
+        public readonly List<W3xHierarchyData> Hierarchies = new List<W3xHierarchyData>();
+        public readonly List<W3xContainerData> Containers = new List<W3xContainerData>();
         // Mesh, hierarchy and animation declarations share the W3X extension.
         public readonly List<string> Declarations = new List<string>();
         public readonly List<string> SourcePaths = new List<string>();
@@ -32,7 +83,8 @@ namespace MusafirEx.CncSage.Editor
 
     /// <summary>
     /// Original, deliberately limited XML reader for uncompiled W3X sources.
-    /// It does not parse binary W3D, material shaders, animation, or HLOD bindings.
+    /// Does not decode binary W3D or animation tracks; phase 1B parses
+    /// source pivots, vertex influences, FXShader properties, and container refs.
     /// </summary>
     internal static class W3xReader
     {
@@ -47,6 +99,7 @@ namespace MusafirEx.CncSage.Editor
             var fullPath = Path.GetFullPath(assetPath);
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             ReadFile(fullPath, result, visited, 0, true);
+            ResolveCompanionHierarchy(fullPath, result, visited);
 
             // Valid SAGE W3X sources can contain no meshes (for example _SKL
             // hierarchies and _IDLA / _ATKA animations). Keep a placeholder.
@@ -105,12 +158,22 @@ namespace MusafirEx.CncSage.Editor
                     result.Meshes.Add(mesh);
                     result.Declarations.Add("W3DMesh: " + mesh.Identifier);
                 }
-                else if (kind == "W3DHierarchy" || kind == "W3DAnimation" ||
-                         kind == "W3DContainer" || kind == "W3DCollisionBox" ||
+                else if (kind == "W3DHierarchy")
+                {
+                    var hierarchy = ParseHierarchy(node);
+                    result.Hierarchies.Add(hierarchy);
+                    result.Declarations.Add(kind + ": " + hierarchy.Identifier);
+                }
+                else if (kind == "W3DContainer")
+                {
+                    var container = ParseContainer(node);
+                    result.Containers.Add(container);
+                    result.Declarations.Add(kind + ": " + container.Identifier);
+                }
+                else if (kind == "W3DAnimation" || kind == "W3DCollisionBox" ||
                          kind == "Texture")
                 {
-                    // Recognition only. Do not misrepresent these as decoded
-                    // skeletons, animation clips, containers or materials.
+                    // Animation / collision XML is recognized, not yet decoded.
                     string identifier = (string)node.Attribute("id");
                     result.Declarations.Add(kind +
                         (string.IsNullOrWhiteSpace(identifier) ? "" : ": " + identifier));
@@ -197,6 +260,16 @@ namespace MusafirEx.CncSage.Editor
                 uvElements[1].Elements().Where(e => e.Name.LocalName == "T")
                     .Select(e => ReadVector2(e, id)).ToArray();
 
+            // SAGE supports a second influence list on some skinned meshes.
+            var influences = node.Elements()
+                .Where(e => e.Name.LocalName == "BoneInfluences").ToArray();
+            var primary = influences.Length > 0 ? ParseInfluences(influences[0], id) :
+                new W3xBoneInfluence[0];
+            var secondary = influences.Length > 1 ? ParseInfluences(influences[1], id) :
+                new W3xBoneInfluence[0];
+            var shaders = node.Elements().Where(e => e.Name.LocalName == "FXShader")
+                .Select(ParseFxShader).ToArray();
+
             return new W3xMeshData
             {
                 Identifier = id,
@@ -206,7 +279,10 @@ namespace MusafirEx.CncSage.Editor
                 Uvs = uvs,
                 Uvs2 = uvs2,
                 UvSetCount = uvElements.Length,
-                TriangleIndices = indices.ToArray()
+                TriangleIndices = indices.ToArray(),
+                BoneInfluences = primary,
+                SecondaryBoneInfluences = secondary,
+                Shaders = shaders
             };
         }
 
@@ -231,6 +307,205 @@ namespace MusafirEx.CncSage.Editor
             if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out result))
                 throw new InvalidDataException(context + ": invalid triangle index.");
             return result;
+        }
+
+        private static float Number(XElement node, string attr, string context, float fallback)
+        {
+            if (node.Attribute(attr) == null)
+                return fallback;
+            return Number(node, attr, context);
+        }
+
+
+        private static W3xBoneInfluence[] ParseInfluences(XElement node, string name)
+        {
+            return node.Elements().Where(e => e.Name.LocalName == "I")
+                .Select(e => new W3xBoneInfluence
+                {
+                    Bone = ParseInt((string)e.Attribute("Bone") ?? "0", name),
+                    Weight = Number(e, "Weight", name)
+                }).ToArray();
+        }
+
+        private static W3xFxShaderData ParseFxShader(XElement node)
+        {
+            var shader = new W3xFxShaderData
+            {
+                Name = (string)node.Attribute("ShaderName") ?? "SAGE_FXShader"
+            };
+
+            foreach (var constant in node.Elements()
+                         .Where(e => e.Name.LocalName == "Constants")
+                         .SelectMany(e => e.Elements()))
+            {
+                string name = (string)constant.Attribute("Name");
+                if (string.IsNullOrWhiteSpace(name))
+                    continue;
+                var values = constant.Elements()
+                    .Where(e => e.Name.LocalName == "Value")
+                    .Select(e => e.Value.Trim()).ToArray();
+                if (values.Length != 0)
+                    shader.Properties[name] = string.Join(",", values);
+            }
+            return shader;
+        }
+
+        private static W3xHierarchyData ParseHierarchy(XElement node)
+        {
+            var hierarchy = new W3xHierarchyData
+            {
+                Identifier = (string)node.Attribute("id") ?? "SAGE_Hierarchy"
+            };
+            foreach (var pivot in node.Elements()
+                         .Where(e => e.Name.LocalName == "Pivot"))
+            {
+                string name = (string)pivot.Attribute("Name");
+                var translation = FirstChild(pivot, "Translation");
+                var rotation = FirstChild(pivot, "Rotation");
+                var source = new W3xPivotData
+                {
+                    Name = string.IsNullOrWhiteSpace(name) ?
+                        "Pivot_" + hierarchy.Pivots.Count : name,
+                    Parent = ParseInt((string)pivot.Attribute("Parent") ?? "-1", "Pivot.Parent"),
+                    Translation = translation == null ? Vector3.zero :
+                        ReadVector3(translation, name),
+                    Rotation = rotation == null ? Quaternion.identity :
+                        ReadQuaternion(rotation, name)
+                };
+                hierarchy.Pivots.Add(source);
+            }
+            return hierarchy;
+        }
+
+        private static Quaternion ReadQuaternion(XElement node, string context)
+        {
+            // Source is W,X,Y,Z. Swapping the model's Y and Z axes changes
+            // handedness; the converted Quaternion is applied by the builder.
+            return new Quaternion(
+                Number(node, "X", context),
+                Number(node, "Y", context),
+                Number(node, "Z", context),
+                Number(node, "W", context));
+        }
+
+        private static W3xContainerData ParseContainer(XElement node)
+        {
+            var container = new W3xContainerData
+            {
+                Identifier = (string)node.Attribute("id") ?? "SAGE_Container",
+                HierarchyName = (string)node.Attribute("Hierarchy")
+            };
+
+            foreach (var item in node.Elements()
+                         .Where(e => e.Name.LocalName == "SubObject"))
+            {
+                var render = FirstChild(item, "RenderObject");
+                var identifier = render == null ? null : render.Elements()
+                    .FirstOrDefault(e => e.Name.LocalName == "Mesh" ||
+                                         e.Name.LocalName == "CollisionBox");
+                if (identifier == null || string.IsNullOrWhiteSpace(identifier.Value))
+                    continue;
+                container.SubObjects.Add(new W3xSubObjectData
+                {
+                    Identifier = identifier.Value.Trim(),
+                    BoneIndex = ParseInt((string)item.Attribute("BoneIndex") ?? "0",
+                        container.Identifier)
+                });
+            }
+            return container;
+        }
+
+        private static void ResolveCompanionHierarchy(
+            string mainPath, W3xDocument result, HashSet<string> visited)
+        {
+            if (result.Hierarchies.Count > 0 || result.Meshes.Count == 0)
+                return;
+
+            // Use the source container's explicit Hierarchy reference first.
+            // Never use an unrelated _SKL simply because it is in this folder.
+            var names = result.Containers
+                .Select(c => c.HierarchyName)
+                .Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(
+                    StringComparer.OrdinalIgnoreCase).ToList();
+
+            if (names.Count == 0 &&
+                result.Meshes.Any(m => string.Equals(m.GeometryType, "Skin",
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                var stem = Path.GetFileNameWithoutExtension(mainPath);
+                int suffix = stem.IndexOf("_SKN", StringComparison.OrdinalIgnoreCase);
+                if (suffix > 0)
+                {
+                    string baseName = stem.Substring(0, suffix);
+                    names.Add(baseName);
+                    // C&C damage/upgrade variant names may share a base skeleton.
+                    if (baseName.EndsWith("R", StringComparison.OrdinalIgnoreCase) ||
+                        baseName.EndsWith("D", StringComparison.OrdinalIgnoreCase))
+                        names.Add(baseName.Substring(0, baseName.Length - 1));
+                }
+            }
+
+            string directory = Path.GetDirectoryName(mainPath);
+            if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+                return;
+
+            foreach (var name in names)
+            {
+                var targets = new[] { name, name + "_SKL" };
+                foreach (var file in Directory.GetFiles(directory, "*.w3x"))
+                {
+                    if (!targets.Any(t => string.Equals(
+                        Path.GetFileNameWithoutExtension(file), t,
+                        StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                    if (string.Equals(Path.GetFullPath(file), mainPath,
+                        StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    try
+                    {
+                        // Probe the expected W3X by its actual declarations.
+                        // Import no unrelated mesh data from a sibling skeleton.
+                        var settings = new XmlReaderSettings
+                        {
+                            DtdProcessing = DtdProcessing.Prohibit,
+                            XmlResolver = null
+                        };
+                        XDocument xml;
+                        using (var reader = XmlReader.Create(file, settings))
+                            xml = XDocument.Load(reader);
+                        if (xml.Root == null ||
+                            xml.Root.Name.LocalName != "AssetDeclaration")
+                            continue;
+                        var candidates = xml.Root.Elements().Where(e =>
+                            e.Name.LocalName == "W3DHierarchy").ToArray();
+                        foreach (var entry in candidates)
+                        {
+                            string id = (string)entry.Attribute("id");
+                            if (!string.IsNullOrEmpty(id) &&
+                                !names.Any(n => string.Equals(n, id,
+                                    StringComparison.OrdinalIgnoreCase)))
+                                continue;
+                            result.Hierarchies.Add(ParseHierarchy(entry));
+                            result.Declarations.Add("W3DHierarchy: " + id);
+                            if (visited.Add(Path.GetFullPath(file)))
+                                result.SourcePaths.Add(Path.GetFullPath(file));
+                        }
+                        if (result.Hierarchies.Count > 0)
+                            return;
+                    }
+                    catch (Exception ex) when (ex is IOException ||
+                                             ex is XmlException)
+                    {
+                        result.Warnings.Add("Cannot read companion hierarchy " +
+                            file + ": " + ex.Message);
+                    }
+                }
+            }
+
+            if (names.Count > 0)
+                result.Warnings.Add("No matching companion hierarchy found for " +
+                    string.Join(", ", names.ToArray()));
         }
 
         private static Vector3 ReadVector3(XElement node, string context)
