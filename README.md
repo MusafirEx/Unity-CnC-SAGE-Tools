@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.2.0 Phase 2A prototype.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
+**Status: 0.2.1 Phase 2B preview.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
 
 ## Install in Unity
 
@@ -108,9 +108,40 @@ This is the **first experimental export milestone**, not a finished Kane's Wrath
 - Use `SkinnedTriangle.w3x` and `GUPitbull_SKN.W3X` to confirm the exporter preserves original `BoneInfluences`, `W3DHierarchy` and `FXShader` declarations.
 - Compare the source and exported model in Unity, checking mesh vertex counts, UV0/UV1, hierarchy count and material assignment. A separate in-game SAGE asset-builder validation is still required.
 
+
+## Phase 2B: edited mesh, skin, pivot and texture export (preview)
+
+**Phase 2A's safe export command is unchanged** and remains the recommended default. Phase 2B is experimental and can be tested without writing game assets.
+
+### Test the selected Pitbull without modifying files
+
+1. Select `GPPitbull.w3x` or `GPPitbull_unity_roundtrip.w3x`.
+2. Run **Tools > C&C SAGE > Validate Selected W3X Mesh Edits (No Write)**.
+3. The tool temporarily duplicates a static mesh in memory, changes UV0 and (when no source AABTree is present) one vertex, then checks the W3X XML output. It destroys its temporary objects and writes **no files**.
+4. Check Unity Console for **`[C&C SAGE Phase 2B] Edited W3X test PASS`**. If the source mesh contains AABTree, only UV export is tested.
+5. Run **Tools > C&C SAGE > Run Phase 2B Advanced Export Self-Test** for a synthetic skeleton, two-influence skinning, local pivot edits, FixupMatrix rejection and runtime-only texture rejection.
+
+### Authoring commands
+
+- **Tools > C&C SAGE > Export Selected W3X (Safe Roundtrip)...** — existing Phase 2A behavior (skin/pivots/FXShader remain source-preserved).
+- **Tools > C&C SAGE > Export Selected W3X (Skin & Shader Textures)...** — exports compatible edited skin rest vertices and existing one/two-bone weights by inverting the weighted rest-pose transform, and updates **existing** `FXShader` diffuse, normal and specular texture names from the selected Unity material.
+- **Tools > C&C SAGE > Export Selected W3X (Local Pivots)...** — exports edited local pivot translations and rotations **only** if the selected W3X file itself defines the `W3DHierarchy`. If the mesh includes an external `*_SKL.W3X` file, select the `_SKL` asset separately and export it. Parent/index/name changes and pivot edits with `FixupMatrix` are rejected.
+
+All commands generate **new W3X XML copies**, not binary W3D, and do not overwrite the selected W3X original. Source `ART:` includes remain unchanged, so exported sources with includes must stay beside the original. Do not use these generated files to overwrite any C&C game assets until separately validated with the intended SAGE mod SDK.
+
+### Known constraints and verification
+
+- Skinning requires unchanged topology, at most two existing influence channels, unchanged bone indices, valid bindposes, matching SAGE pivot ordering and invertible source/rest-pose transforms. The exporter refuses unsupported data instead of emitting knowingly malformed skinning XML.
+- For skin vertices with an `AABTree`, changing source-space positions is blocked until the collision/spatial tree can be regenerated.
+- Local pivots with `FixupMatrix` cannot be safely changed without recomputing the original bind/fixup data. Unchanged source fixups are preserved.
+- `FXShader` texture updates require a texture asset under `Assets/`, an existing source texture constant and exactly one source FXShader pass. No new shader stages, material graphs, changed source texture definitions or shader-color mappings are created.
+- Material texture changes are applied **only** in the explicit advanced skin/material command, not to the safe exporter.
+- Before considering Phase 2B complete, check real-world `GPPitbull` and `GUPitbull_SKL` exports against Blender and Unity reimport; a standalone Unity smoke test cannot certify game-builder compatibility.
+- **The current GitHub branch has not yet been compiled or runtime-tested against the user's Unity Editor.**
+
 ## Roadmap
 
 1. Validate geometry, coordinate system and UVs against legal user-provided sample W3X models.
-2. Preserve hierarchy, pivots and materials; resolve neighboring mesh files referenced by containers.
-3. Validate Phase 2A source-preserving W3X exporter, then implement complete edited static meshes, rigging and material round-trips.
+2. Validate Phase 1B hierarchy and materials, including companion _SKL W3X and external ART resolution.
+3. Validate Phase 2A/B edited W3X export, compare static/skin changes against Blender, then implement true new-topology and complete rigging/material round-trips.
 4. Add animation support, then investigate binary W3D and WrathEd toolchain validation.

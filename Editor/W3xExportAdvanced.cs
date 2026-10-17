@@ -15,7 +15,7 @@ namespace MusafirEx.CncSage.Editor
     /// </summary>
     internal static class W3xExportAdvanced
     {
-        private const float PositionEpsilon = 0.0001f;
+        private const float PositionEpsilon = 0.001f;
         private const float WeightEpsilon = 0.0001f;
 
         internal static void PatchLocalPivots(
@@ -327,6 +327,11 @@ namespace MusafirEx.CncSage.Editor
                     w.weight0 < 0 || w.weight1 < 0)
                     throw new InvalidDataException(id +
                         " supports up to two nonnegative bone influences.");
+                if (w.boneIndex0 < 0 || w.boneIndex0 >= bones.Length ||
+                    w.weight1 > WeightEpsilon &&
+                        (w.boneIndex1 < 0 || w.boneIndex1 >= bones.Length))
+                    throw new InvalidDataException(id +
+                        " has out-of-range Unity bone index at vertex " + i);
                 int sourceIndex0 = SourceInt((string)primary[i].Attribute("Bone"), -1);
                 int sourceIndex1 = secondary == null ? 0 :
                     SourceInt((string)secondary[i].Attribute("Bone"), 0);
@@ -386,7 +391,7 @@ namespace MusafirEx.CncSage.Editor
                     authoredVertices[i]);
                 Vector3 sourceSage = W3xExportCore.ToSage(sourceUnity);
                 outputVertices[i] = sourceSage;
-                if (!W3xExportCore.Close(sourceVertices[i], sourceSage))
+                if (Vector3.Distance(sourceVertices[i], sourceSage) > PositionEpsilon)
                     changedVertices++;
 
                 if (haveNormals)
