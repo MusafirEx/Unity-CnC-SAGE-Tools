@@ -30,10 +30,10 @@ Requires Git installed and Unity 2022.3 LTS or later.
 - Relative local `<Includes><Include source="ART:..."/></Includes>` resources when present.
 - Auto-generated model hierarchy with one child GameObject per mesh and retained mesh ID.
 - Basic preliminary axis conversion: `(X,Y,Z) -> (X,Z,Y)`, reversing triangle winding.
-- `W3DHierarchy` pivots reconstructed into named Unity Transform objects. Parent indices and local translations/rotations are applied.
+- `W3DHierarchy` pivots reconstructed into named Unity Transform objects. Parent indices and local translations/rotations are applied; `CncSagePivotInfo` retains original NameID and FixupMatrix XML for later export.
 - Tries to resolve a companion `*_SKL.w3x` file by `W3DContainer.Hierarchy` reference or conservative same-model naming.
 - `GeometryType="Skin"` meshes with valid `BoneInfluences` and pivots generate `SkinnedMeshRenderer`, normalized weights and bindposes.
-- Initial `FXShader` materials are generated as W3X sub-assets; the first shader pass can use neighboring TGA/DDS/PNG textures referenced by shader constants.
+- Initial `FXShader` materials are generated as W3X sub-assets; the first shader pass can use neighboring TGA/DDS/PNG textures referenced by shader constants. `CncSageMaterialMetadata` retains the original shader name/constants for later export.
 - `W3DContainer` subobject BoneIndex can attach non-skinned mesh parts to pivot transforms.
 
 ### Phase 1B rig and material regression
@@ -73,7 +73,7 @@ If an earlier repository ZIP was extracted into `Assets/Extension/Unity-CnC-SAGE
 - Binary `.w3d` files or compiled game archives.
 - **Any W3X/W3D export** or tested Kane's Wrath in-game interoperability.
 
-**Warning:** The coordinate conversion is a working assumption, not yet verified with a real game asset. The generated model uses Unity's default material. Do not use this prototype to overwrite original game files.
+**Warning:** Coordinate conversion, bindposes and complex FXShader material behavior still need verification with real game assets. A default Unity material may appear where SAGE shader definitions are missing. Do not use this prototype to overwrite original game files.
 
 ## Reference and licensing
 

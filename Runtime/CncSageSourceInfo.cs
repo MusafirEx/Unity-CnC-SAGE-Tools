@@ -4,7 +4,8 @@ namespace MusafirEx.CncSage
 {
     /// <summary>
     /// Stores the top-level W3X declarations on imported source assets.
-    /// Zero imported meshes means metadata-only, not an imported skeleton/clip.
+    /// Zero imported meshes means no rendered geometry. A source may still
+    /// contain reconstructed pivot transforms; animation clips are not built.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class CncSageSourceInfo : MonoBehaviour

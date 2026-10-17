@@ -47,6 +47,8 @@ namespace MusafirEx.CncSage.Editor
     {
         public string Name;
         public int Parent;
+        public int NameId;
+        public string FixupXml;
         public Vector3 Translation;
         public Quaternion Rotation;
     }
@@ -367,6 +369,10 @@ namespace MusafirEx.CncSage.Editor
                     Name = string.IsNullOrWhiteSpace(name) ?
                         "Pivot_" + hierarchy.Pivots.Count : name,
                     Parent = ParseInt((string)pivot.Attribute("Parent") ?? "-1", "Pivot.Parent"),
+                    NameId = ParseInt((string)pivot.Attribute("NameID") ?? 
+                        hierarchy.Pivots.Count.ToString(CultureInfo.InvariantCulture), "Pivot.NameID"),
+                    FixupXml = FirstChild(pivot, "FixupMatrix") == null ? "" :
+                        FirstChild(pivot, "FixupMatrix").ToString(SaveOptions.DisableFormatting),
                     Translation = translation == null ? Vector3.zero :
                         ReadVector3(translation, name),
                     Rotation = rotation == null ? Quaternion.identity :
@@ -418,7 +424,8 @@ namespace MusafirEx.CncSage.Editor
         private static void ResolveCompanionHierarchy(
             string mainPath, W3xDocument result, HashSet<string> visited)
         {
-            if (result.Hierarchies.Count > 0 || result.Meshes.Count == 0)
+            if (result.Hierarchies.Count > 0 ||
+                (result.Meshes.Count == 0 && result.Containers.Count == 0))
                 return;
 
             // Use the source container's explicit Hierarchy reference first.
@@ -452,8 +459,11 @@ namespace MusafirEx.CncSage.Editor
             foreach (var name in names)
             {
                 var targets = new[] { name, name + "_SKL" };
-                foreach (var file in Directory.GetFiles(directory, "*.w3x"))
+                foreach (var file in Directory.GetFiles(directory))
                 {
+                    if (!string.Equals(Path.GetExtension(file), ".w3x",
+                        StringComparison.OrdinalIgnoreCase))
+                        continue;
                     if (!targets.Any(t => string.Equals(
                         Path.GetFileNameWithoutExtension(file), t,
                         StringComparison.OrdinalIgnoreCase)))

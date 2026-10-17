@@ -227,6 +227,8 @@ namespace MusafirEx.CncSage.Editor
                     holder.transform, false);
                 result[i].localPosition = ToUnity(pivot.Translation);
                 result[i].localRotation = ToUnity(pivot.Rotation);
+                result[i].gameObject.AddComponent<CncSagePivotInfo>()
+                    .SetSource(pivot.NameId, i, pivot.Parent, pivot.FixupXml);
             }
 
             return result;
@@ -354,6 +356,10 @@ namespace MusafirEx.CncSage.Editor
                     material.SetTexture("_SpecGlossMap", spec);
 
                 context.AddObjectToAsset("material_" + index + "_" + i, material);
+                var metadata = ScriptableObject.CreateInstance<CncSageMaterialMetadata>();
+                metadata.name = material.name + ".SAGE_Source";
+                metadata.SetSource(fx.Name, fx.Properties);
+                context.AddObjectToAsset("materialmeta_" + index + "_" + i, metadata);
                 result[i] = material;
             }
             return result;
