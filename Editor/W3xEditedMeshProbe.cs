@@ -63,12 +63,14 @@ namespace MusafirEx.CncSage.Editor
                                 x.SageIdentifier,
                                 StringComparison.OrdinalIgnoreCase))
                     })
-                    .FirstOrDefault(x =>
+                    .Where(x =>
                         x.filter != null && x.filter.sharedMesh != null &&
                         x.xml != null &&
                         x.filter.sharedMesh.uv.Length ==
                             x.filter.sharedMesh.vertexCount &&
-                        W3xExportCore.Children(x.xml, "TexCoords").Any());
+                        W3xExportCore.Children(x.xml, "TexCoords").Any())
+                    .OrderBy(x => W3xExportCore.Child(x.xml, "AABTree") != null)
+                    .FirstOrDefault();
 
                 if (target == null)
                     throw new InvalidDataException(
@@ -135,7 +137,8 @@ namespace MusafirEx.CncSage.Editor
                 // Prove that W3X output is valid serialized XML and all the
                 // unmodified non-mesh declarations survive serialization.
                 string serialized = edited.ToString(SaveOptions.DisableFormatting);
-                var reloaded = XDocument.Parse(serialized);
+                var reloaded = XDocument.Parse(serialized,
+                    LoadOptions.PreserveWhitespace);
                 W3xExportCore.ValidateMetadataPreservation(
                     source, reloaded);
 
