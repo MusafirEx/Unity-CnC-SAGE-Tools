@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.3.5",
+  "version": "0.4.0",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Experimental Phase 2D skinned mesh editing and guarded source-preserving export with locked-file fallback to separate validated W3X copies.",
+  "description": "Experimental Phase 3A W3DAnimation import to Unity AnimationClip sub-assets; W3X editing/export from Phase 2 remains supported.",
   "unity": "2022.3",
   "keywords": ["command and conquer", "sage", "w3x", "w3d", "modding"],
   "author": {

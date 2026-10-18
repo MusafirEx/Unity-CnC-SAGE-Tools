@@ -162,6 +162,12 @@ namespace MusafirEx.CncSage.Editor
                 }
                 context.AddObjectToAsset("mesh_" + i, mesh);
             }
+
+            // Phase 3A: store AnimationClips as independent W3X import
+            // sub-assets. No Animation/Animator runtime component or
+            // controller is generated; Phase 3B will add authoring tools.
+            W3xAnimationClipBuilder.Build(document, root, hierarchy, pivots,
+                (key, clip) => context.AddObjectToAsset(key, clip));
         }
 
         private static W3xHierarchyData ChooseHierarchy(W3xDocument document)

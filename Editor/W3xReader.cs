@@ -77,6 +77,7 @@ namespace MusafirEx.CncSage.Editor
         public readonly List<W3xMeshData> Meshes = new List<W3xMeshData>();
         public readonly List<W3xHierarchyData> Hierarchies = new List<W3xHierarchyData>();
         public readonly List<W3xContainerData> Containers = new List<W3xContainerData>();
+        public readonly List<W3xAnimationData> Animations = new List<W3xAnimationData>();
         // Mesh, hierarchy and animation declarations share the W3X extension.
         public readonly List<string> Declarations = new List<string>();
         public readonly List<string> SourcePaths = new List<string>();
@@ -172,10 +173,17 @@ namespace MusafirEx.CncSage.Editor
                     result.Containers.Add(container);
                     result.Declarations.Add(kind + ": " + container.Identifier);
                 }
-                else if (kind == "W3DAnimation" || kind == "W3DCollisionBox" ||
-                         kind == "Texture")
+                else if (kind == "W3DAnimation")
                 {
-                    // Animation / collision XML is recognized, not yet decoded.
+                    string identifier = (string)node.Attribute("id");
+                    result.Declarations.Add(kind +
+                        (string.IsNullOrWhiteSpace(identifier) ? "" : ": " + identifier));
+                    var animation = W3xAnimationReader.Read(node, result.Warnings);
+                    if (animation != null)
+                        result.Animations.Add(animation);
+                }
+                else if (kind == "W3DCollisionBox" || kind == "Texture")
+                {
                     string identifier = (string)node.Attribute("id");
                     result.Declarations.Add(kind +
                         (string.IsNullOrWhiteSpace(identifier) ? "" : ": " + identifier));
@@ -425,13 +433,15 @@ namespace MusafirEx.CncSage.Editor
             string mainPath, W3xDocument result, HashSet<string> visited)
         {
             if (result.Hierarchies.Count > 0 ||
-                (result.Meshes.Count == 0 && result.Containers.Count == 0))
+                (result.Meshes.Count == 0 && result.Containers.Count == 0 &&
+                 result.Animations.Count == 0))
                 return;
 
             // Use the source container's explicit Hierarchy reference first.
             // Never use an unrelated _SKL simply because it is in this folder.
             var names = result.Containers
                 .Select(c => c.HierarchyName)
+                .Concat(result.Animations.Select(a => a.HierarchyName))
                 .Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(
                     StringComparer.OrdinalIgnoreCase).ToList();
 
