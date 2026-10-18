@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Xml.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -75,6 +76,72 @@ namespace MusafirEx.CncSage.Editor
                     throw new InvalidDataException(
                         "Mesh topology, bindposes or unrelated weights changed.");
 
+                // The editor must reject a change that overlaps two
+                // vertices before mutating the saved Mesh asset.
+                Vector3 previousVertex = mesh.vertices[0];
+                bool collapsedEditRejected = false;
+                try
+                {
+                    W3xSkinnedMeshEditor.ModifyVertex(mesh, 0,
+                        mesh.vertices[1]);
+                }
+                catch (InvalidDataException e)
+                {
+                    collapsedEditRejected =
+                        e.Message.Contains("triangle 0");
+                }
+                if (!collapsedEditRejected ||
+                    Vector3.Distance(mesh.vertices[0], previousVertex) >
+                    .000001f)
+                    throw new InvalidDataException(
+                        "Collapsed triangle edit was not rejected safely.");
+
+                // Exporter must preserve an untouched source-degenerate
+                // triangle Nrm/Dist even if a different triangle changes.
+                var sourcePlanes = XDocument.Parse(
+                    "<Root><T><V>0</V><V>1</V><V>2</V>" +
+                    "<Nrm X='0' Y='0' Z='1'/><Dist>0</Dist></T>" +
+                    "<T><V>3</V><V>4</V><V>5</V>" +
+                    "<Nrm X='0' Y='0' Z='1'/><Dist>7</Dist></T></Root>");
+                var trianglesXml = sourcePlanes.Root.Elements().ToArray();
+                var originalPositions = new[] {
+                    Vector3.zero, Vector3.right, Vector3.up,
+                    Vector3.zero, Vector3.right, Vector3.right * 2f
+                };
+                var editedPositions = (Vector3[])originalPositions.Clone();
+                editedPositions[0] = new Vector3(0, 0, .5f);
+                var marked = new[] {
+                    true, false, false, false, false, false
+                };
+                string untouchedBefore = trianglesXml[1].ToString();
+                W3xExportCore.UpdateTrianglePlanes(trianglesXml,
+                    originalPositions, editedPositions, marked);
+                if (trianglesXml[1].ToString() != untouchedBefore)
+                    throw new InvalidDataException(
+                        "Unchanged source-degenerate plane was rewritten.");
+
+                editedPositions = (Vector3[])originalPositions.Clone();
+                editedPositions[5] = new Vector3(.5f, 0, 0);
+                marked = new[] {
+                    false, false, false, false, false, true
+                };
+                bool modifiedDegenerateRejected = false;
+                try
+                {
+                    W3xExportCore.UpdateTrianglePlanes(
+                        trianglesXml, originalPositions,
+                        editedPositions, marked);
+                }
+                catch (InvalidDataException e)
+                {
+                    modifiedDegenerateRejected =
+                        e.Message.Contains("triangle 1") &&
+                        e.Message.Contains("3,4,5");
+                }
+                if (!modifiedDegenerateRejected)
+                    throw new InvalidDataException(
+                        "Modified degenerate triangle needs vertex diagnostics.");
+
                 var singleBone = mesh.boneWeights;
                 singleBone[2].boneIndex1 = singleBone[2].boneIndex0;
                 mesh.boneWeights = singleBone;
@@ -95,7 +162,8 @@ namespace MusafirEx.CncSage.Editor
                 Debug.Log(
                     "[C&C SAGE Phase 2D] Skinned mesh edit self-test PASS: " +
                     "rest vertex, normalized existing weight pair, " +
-                    "unchanged topology/bindposes, guard on invalid indices.");
+                    "unchanged topology/bindposes, safe degenerate " +
+                    "triangle preservation and rejected collapsed edits.");
             }
             catch (Exception e)
             {
