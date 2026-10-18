@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.3.1 Phase 2C preview: new static meshes and material identities.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
+**Status: 0.3.2 Phase 2D preview: guarded skin editing in Prefab Mode.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
 
 ## Install in Unity
 
@@ -335,6 +335,65 @@ shader/texture declarations are **exported**.
   GUPitbull sample texture exists) file/name-based normal texture mapping.
 - Full game-ready material authoring, arbitrary new FXShader creation and
   automatic texture copying are not yet implemented.
+
+
+## Phase 2D: Unity skinned mesh authoring (v0.3.2 preview)
+
+ProBuilder does **not** provide the equivalent of safe geometry/weight editing
+for imported SAGE \`SkinnedMeshRenderer\` objects. Phase 2D adds a restricted
+**Tools > C&C SAGE > Phase 2D Skinned Mesh Editor** window. This tool edits
+the independent \`Mesh.asset\` already copied by
+**Create Editable W3X Project Prefab**. It does **not** convert meshes to
+\`ProBuilderMesh\` and does **not** modify the original imported W3X.
+
+### Editing \`GPPITBULL.NEWSKIN\` without the active Unity scene
+
+1. In **Project**, double-click \`Assets/CncSageEditable/GPPitbull_Editable.prefab\`
+   to open **Prefab Mode**. This is an isolated authoring stage, not a
+   persistent instance in \`MainMenu\`.
+2. Select the child \`GPPITBULL.NEWSKIN\` which has \`SkinnedMeshRenderer\`.
+3. Open **Tools > C&C SAGE > Phase 2D Skinned Mesh Editor**.
+   Click **Use Selected**, then **Refresh Source Validation**. The editor
+   requires the prefab's \`CncSageEditableSource\` GUID, mesh identity and
+   independent Mesh asset in \`Assets/CncSageEditable\`.
+4. Use **Vertex** to choose an existing vertex. Optionally select one of
+   the highlighted vertex dots in Scene view, or move the selected vertex
+   with the Scene-view handle. The Inspector window also exposes **Local
+   Rest Position**, **UV0**, and **UV1**.
+5. For W3X skin meshes with **two original BoneInfluences** and distinct
+   existing bone indices, use **Primary weight** to redistribute influence
+   between *those same two bones*. The opposite weight becomes
+   \`1 - primary\`. Single-bone vertex indices cannot be changed.
+6. Click **Save Mesh Asset**. The tool records Undo for edits and preserves
+   original triangle indices and bindposes.
+7. Select **the editable prefab in Project** and export using
+   **Tools > C&C SAGE > Export Selected W3X (Skin & Shader Textures)...**.
+   Do not use **Safe Roundtrip**, which intentionally preserves the original
+   skinned source block. Reimport and check the edited vertex/weights.
+8. Run **Tools > C&C SAGE > Run Phase 2D Skin Editing Self-Test** to validate
+   the temporary synthetic rest-position/weight edit guards.
+
+### Safety and current scope
+
+- **No topology editing** (no add/delete/merge/split of vertices or faces),
+  no new bone indices, bindposes, weight channels or skin meshes.
+- Only independent \`.asset\` meshes inside \`Assets/CncSageEditable/\` may
+  be edited. Original imported \`.w3x\` mesh sub-assets are protected.
+- The Scene view displays rest-position vertex handles; avoid posing or
+  animating bones while editing. This is an MVP, **not** a full deformed
+  surface sculptor or weight-paint brush.
+- If the original skinned source contains \`AABTree\`, rest-position edits
+  are disabled because collision/spatial-tree rebuild is unavailable.
+- Editing existing weights may produce a new source-space rest position
+  during inverse weighted transform export. The exporter may reject it
+  when \`AABTree\` is present; the Editor checks topology/bone indices
+  but **does not guarantee every edited weight set is exportable**.
+- The Phase 2B experimental skin exporter still requires the original
+  influence groups, bone indices and valid SAGE rig data. Test an actual
+  \`GPPITBULL.NEWSKIN\` export/reimport before treating Phase 2D as complete.
+- Editor source code has been statically audited, but actual Unity
+  compilation, UI interaction and end-to-end Pitbull skin round-trip
+  **still require live validation**.
 
 ## Roadmap
 

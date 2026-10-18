@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Experimental Phase 2C W3X exporter with new static meshes and material identities, linked FXShader templates and optional existing texture lookup.",
+  "description": "Experimental Phase 2D editable skinned Mesh vertices, UVs and existing bone weights in Prefab Mode, with guarded W3X export.",
   "unity": "2022.3",
   "keywords": ["command and conquer", "sage", "w3x", "w3d", "modding"],
   "author": {
