@@ -23,6 +23,7 @@ namespace MusafirEx.CncSage.Editor
             public bool ExportPivotTransforms;
             public bool ExportSkinWeightsAndVertices;
             public bool ExportMaterialTextures;
+            public bool ExportNewStaticMeshes;
         }
 
         internal sealed class Report
@@ -37,6 +38,8 @@ namespace MusafirEx.CncSage.Editor
             public int ChangedShaderTextures;
             public int ChangedSkinWeights;
             public int ChangedSkinVertices;
+            public int NewStaticMeshesExported;
+            public int NewContainerBindings;
             public readonly List<string> Notes = new List<string>();
 
             public string Describe()
@@ -51,6 +54,8 @@ namespace MusafirEx.CncSage.Editor
                     "\nChanged FXShader texture references: " + ChangedShaderTextures +
                     "\nChanged skin weights: " + ChangedSkinWeights +
                     "\nChanged skin source vertices: " + ChangedSkinVertices +
+                    "\nNew static meshes exported: " + NewStaticMeshesExported +
+                    "\nNew container bindings: " + NewContainerBindings +
                     (Notes.Count == 0 ? "" : "\n" + string.Join("\n", Notes.ToArray()));
             }
         }
@@ -143,6 +148,10 @@ namespace MusafirEx.CncSage.Editor
                 if (options.ExportMaterialTextures)
                     W3xExportAdvanced.PatchShaderTextures(sourceMesh, part, report);
             }
+
+            if (options.ExportNewStaticMeshes)
+                W3xNewMeshExporter.AppendNewStaticMeshes(
+                    output, selectedModel, parts, report);
 
             if (options.ExportPivotTransforms)
                 W3xExportAdvanced.PatchLocalPivots(output, selectedModel, report);
@@ -425,12 +434,23 @@ namespace MusafirEx.CncSage.Editor
         internal static void ValidateMetadataPreservation(
             XDocument original, XDocument exported)
         {
-            ValidateMetadataPreservation(original, exported, false);
+            ValidateMetadataPreservation(original, exported, false, false);
         }
 
         internal static void ValidateMetadataPreservation(
             XDocument original, XDocument exported, bool allowPivotTransforms)
         {
+            ValidateMetadataPreservation(original, exported,
+                allowPivotTransforms, false);
+        }
+
+        internal static void ValidateMetadataPreservation(
+            XDocument original, XDocument exported, bool allowPivotTransforms,
+            bool allowNewStaticMeshes)
+        {
+            if (allowNewStaticMeshes)
+                W3xNewMeshExporter.ValidateNewMeshDeclarations(
+                    original, exported);
             var left = original.Root.Elements()
                 .Where(x => x.Name.LocalName != "W3DMesh").ToArray();
             var right = exported.Root.Elements()
@@ -443,6 +463,10 @@ namespace MusafirEx.CncSage.Editor
                 if (allowPivotTransforms &&
                     left[i].Name.LocalName == "W3DHierarchy")
                     W3xExportAdvanced.ValidatePivotMetadata(left[i], right[i]);
+                else if (allowNewStaticMeshes &&
+                    left[i].Name.LocalName == "W3DContainer")
+                    W3xNewMeshExporter.ValidateContainerAppend(
+                        left[i], right[i], original, exported);
                 else if (!XNode.DeepEquals(left[i], right[i]))
                     throw new InvalidDataException(
                         "Source declaration was unexpectedly changed: " +
