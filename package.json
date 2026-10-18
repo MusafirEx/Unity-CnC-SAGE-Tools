@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Experimental Phase 2B W3X XML exporter with linked editable Project prefabs, plus guarded mesh, skin, pivot and shader texture export.",
+  "description": "Experimental Phase 2C W3X exporter with new static mesh declarations and pivot/container attachments; game-builder validation pending.",
   "unity": "2022.3",
   "keywords": ["command and conquer", "sage", "w3x", "w3d", "modding"],
   "author": {
