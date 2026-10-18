@@ -9,7 +9,7 @@ namespace MusafirEx.CncSage.Editor
     /// W3X XML importer: meshes, source pivots, basic skin weights and materials.
     /// Binary W3D remains unsupported. Phase 3A adds limited AnimationClip sub-assets.
     /// </summary>
-    [ScriptedImporter(4, "w3x")]
+    [ScriptedImporter(5, "w3x")]
     public sealed class W3xImporter : ScriptedImporter
     {
         public override void OnImportAsset(AssetImportContext context)
@@ -33,8 +33,9 @@ namespace MusafirEx.CncSage.Editor
             }
 
             var root = new GameObject(Path.GetFileNameWithoutExtension(context.assetPath));
-            // For source-only W3X hierarchies/animations, this is an intentional
-            // metadata placeholder. Geometry meshes still import as before.
+            // Source-only hierarchies can contain importable animation
+            // tracks; models with unsupported animation channels remain
+            // metadata-only placeholders. Geometry import is unchanged.
             root.AddComponent<CncSageSourceInfo>()
                 .SetSourceInfo(document.Declarations.ToArray(), document.Meshes.Count);
             context.AddObjectToAsset("root", root);
