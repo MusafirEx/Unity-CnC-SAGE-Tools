@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.3.3 Phase 2D preview: skinned-mesh authoring and degenerate-triangle protection.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
+**Status: 0.3.4 Phase 2D preview: skinned-mesh authoring, degenerate-triangle protection and LINQ self-test compile fix.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
 
 ## Install in Unity
 
@@ -438,6 +438,11 @@ and pivots, so **some invalid source-space edits may only be detected during
 export**. This PR does not add mesh topology authoring, AABTree rebuilds or
 new bone assignments. Unity recompile and real Pitbull re-export remain to
 be validated after merge.
+
+
+### Phase 2D v0.3.4 — Unity compilation hotfix
+
+The Phase 2D self-test uses `sourcePlanes.Root.Elements().ToArray()` to verify the generated triangle planes, but v0.3.3 omitted the `System.Linq` namespace import. Unity 2022.3.62f3 therefore emitted CS1061 at `Editor/W3xPhase2DSkinEditSelfTest.cs:106`. Version 0.3.4 adds `using System.Linq;` to the Editor-only self-test. This fixes that specific missing extension-method import; no mesh, importer, exporter or Prefab Mode behavior was changed. After installing the Git package update, wait for Unity compilation to finish, then run **Tools > C&C SAGE > Run Phase 2D Skin Editing Self-Test**. Repeated Unity IMGUI `GUIStateObj is deleted` messages are a separate issue not proven resolved by this hotfix.
 
 ## Roadmap
 
