@@ -27,6 +27,7 @@ namespace MusafirEx.CncSage.Editor
         private int[] sourceBone0;
         private int[] sourceBone1;
         private string lastMeshPath;
+        private string lastEditWarning = "";
 
         [MenuItem(MenuPath)]
         private static void Open()
@@ -245,6 +246,8 @@ namespace MusafirEx.CncSage.Editor
                 return;
             }
             EditorGUILayout.HelpBox(sourceStatus, MessageType.None);
+            if (!string.IsNullOrEmpty(lastEditWarning))
+                EditorGUILayout.HelpBox(lastEditWarning, MessageType.Warning);
             EditorGUILayout.LabelField("Independent Mesh",
                 AssetDatabase.GetAssetPath(mesh));
             EditorGUILayout.LabelField("Vertices",
@@ -338,9 +341,16 @@ namespace MusafirEx.CncSage.Editor
             EditorGUILayout.Space();
             if (GUILayout.Button("Save Mesh Asset"))
             {
-                AssetDatabase.SaveAssets();
-                Debug.Log("[C&C SAGE Phase 2D] Saved editable skinned mesh: " +
-                    AssetDatabase.GetAssetPath(mesh));
+                // Importing an asset synchronously inside OnGUI can dispose
+                // IMGUI/UIElements state while still processing GUI events.
+                // Save on the next Editor update, outside the GUI callback.
+                string path = AssetDatabase.GetAssetPath(mesh);
+                EditorApplication.delayCall += () =>
+                {
+                    AssetDatabase.SaveAssets();
+                    Debug.Log("[C&C SAGE Phase 2D] Saved editable skinned mesh: " +
+                        path);
+                };
             }
             EditorGUILayout.HelpBox(
                 "After editing, select the editable prefab in Project and " +
@@ -365,9 +375,40 @@ namespace MusafirEx.CncSage.Editor
             var v = mesh.vertices;
             if (index < 0 || index >= v.Length)
                 throw new ArgumentOutOfRangeException(nameof(index));
+            if (float.IsNaN(localPosition.x) ||
+                float.IsNaN(localPosition.y) ||
+                float.IsNaN(localPosition.z) ||
+                float.IsInfinity(localPosition.x) ||
+                float.IsInfinity(localPosition.y) ||
+                float.IsInfinity(localPosition.z))
+                throw new InvalidDataException(
+                    "Vertex position must contain finite numbers.");
+
+            var candidate = (Vector3[])v.Clone();
+            candidate[index] = localPosition;
+            ValidateVertexPosition(mesh, index, candidate);
             v[index] = localPosition;
             mesh.vertices = v;
             mesh.RecalculateBounds();
+        }
+
+        private static void ValidateVertexPosition(
+            Mesh mesh, int index, Vector3[] vertices)
+        {
+            var triangles = mesh.triangles;
+            for (int t = 0; t < triangles.Length; t += 3)
+            {
+                int a = triangles[t], b = triangles[t + 1],
+                    c = triangles[t + 2];
+                if (a != index && b != index && c != index)
+                    continue;
+                if (Vector3.Cross(vertices[b] - vertices[a],
+                    vertices[c] - vertices[a]).sqrMagnitude <= 0.00000001f)
+                    throw new InvalidDataException(
+                        "Vertex " + index + " would collapse triangle " +
+                        (t / 3) + " (" + a + "," + b + "," + c +
+                        "). Position was not changed.");
+            }
         }
 
         internal static void ModifyExistingWeight(Mesh mesh,
@@ -393,11 +434,26 @@ namespace MusafirEx.CncSage.Editor
         {
             if (sourceHasAabTree || sourceBone0 == null)
                 return;
-            Undo.RecordObject(mesh, "Edit SAGE skinned vertex");
-            Undo.RecordObject(targetSkin, "Update skinned bounds");
-            ModifyVertex(mesh, index, local);
-            targetSkin.localBounds = mesh.bounds;
-            Persist(mesh);
+            try
+            {
+                // Validate the proposal first, before creating Undo records.
+                // The actual mutation below repeats this safe validation.
+                var vertices = mesh.vertices;
+                var candidate = (Vector3[])vertices.Clone();
+                candidate[index] = local;
+                ValidateVertexPosition(mesh, index, candidate);
+                Undo.RecordObject(mesh, "Edit SAGE skinned vertex");
+                Undo.RecordObject(targetSkin, "Update skinned bounds");
+                ModifyVertex(mesh, index, local);
+                targetSkin.localBounds = mesh.bounds;
+                lastEditWarning = "";
+                Persist(mesh);
+            }
+            catch (InvalidDataException e)
+            {
+                lastEditWarning = e.Message;
+                Repaint();
+            }
         }
 
         private void ApplyWeight(Mesh mesh, int index, float value)
@@ -417,8 +473,9 @@ namespace MusafirEx.CncSage.Editor
 
         private static void Persist(Mesh mesh)
         {
+            // SaveAssets during every OnGUI/Handles drag can cause repeated
+            // asset reimports and deleted GUIStateObj warnings.
             EditorUtility.SetDirty(mesh);
-            AssetDatabase.SaveAssets();
             SceneView.RepaintAll();
         }
 

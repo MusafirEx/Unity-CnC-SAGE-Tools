@@ -316,18 +316,40 @@ namespace MusafirEx.CncSage.Editor
 
         internal static void UpdateTrianglePlanes(
             XElement[] triangleNodes,
-            Vector3[] originals, Vector3[] positions)
+            Vector3[] originals, Vector3[] positions,
+            bool[] modifiedVertices = null)
         {
+            if (originals == null || positions == null ||
+                originals.Length != positions.Length ||
+                modifiedVertices != null &&
+                    modifiedVertices.Length != originals.Length)
+                throw new InvalidDataException(
+                    "Triangle plane update has invalid vertex arrays.");
+
             for (int i = 0; i < triangleNodes.Length; i++)
             {
                 var triangle = triangleNodes[i];
                 int[] idx = Children(triangle, "V")
                     .Select(x => ParseIndex(x, "triangle")).ToArray();
+                if (idx.Length != 3 || idx.Any(v =>
+                    v < 0 || v >= originals.Length))
+                    throw new InvalidDataException(
+                        "Triangle " + i + " has invalid source indices.");
+
+                // Existing C&C meshes can contain intentional degenerate
+                // triangles. Preserve Nrm/Dist verbatim unless a vertex
+                // participating in THIS triangle was actually exported.
+                bool affected = idx.Any(v => modifiedVertices != null ?
+                    modifiedVertices[v] : !Close(originals[v], positions[v]));
+                if (!affected)
+                    continue;
+
                 var plane = Child(triangle, "Nrm");
                 var distance = Child(triangle, "Dist");
                 if (plane == null || distance == null)
                     throw new InvalidDataException(
-                        "Edited vertices require Nrm and Dist triangle fields.");
+                        "Edited triangle " + i +
+                        " requires Nrm and Dist fields.");
 
                 Vector3 oldNormal = ReadSourceVector3(plane);
                 var normal = Vector3.Cross(
@@ -335,7 +357,10 @@ namespace MusafirEx.CncSage.Editor
                     positions[idx[2]] - positions[idx[0]]);
                 if (normal.sqrMagnitude <= 0.00000001f)
                     throw new InvalidDataException(
-                        "Degenerate triangle after vertex edit; export aborted.");
+                        "Edited triangle " + i + " (" +
+                        idx[0] + "," + idx[1] + "," + idx[2] +
+                        ") became degenerate (zero area). " +
+                        "Undo or adjust the edited vertex positions.");
                 normal.Normalize();
                 if (Vector3.Dot(normal, oldNormal) < 0)
                     normal = -normal;
