@@ -104,9 +104,46 @@ namespace MusafirEx.CncSage.Editor
                 Assert(missing == 0 && imported.Count == 1,
                     "Mismatched hierarchy must not create invalid clips.");
 
+                // End-to-end XML reader companion test: standalone _IDLA-
+                // style animation resolves its explicitly named _SKL sibling.
+                string folder = Path.Combine(Path.GetTempPath(),
+                    "CncSagePhase3A_" + Guid.NewGuid().ToString("N"));
+                try
+                {
+                    Directory.CreateDirectory(folder);
+                    string animationPath = Path.Combine(
+                        folder, "TEST_IDLE_IDLA.W3X");
+                    string hierarchyPath = Path.Combine(
+                        folder, "TEST_RIG_SKL.W3X");
+                    File.WriteAllText(animationPath,
+                        "<AssetDeclaration xmlns='uri:ea.com:eala:asset'>" +
+                        "<W3DAnimation id='TEST_IDLE' Hierarchy='TEST_RIG' " +
+                        "NumFrames='2' FrameRate='30'><Channels>" +
+                        "<ChannelScalar Pivot='0' Type='XTranslation' " +
+                        "FirstFrame='0'><Frame>0</Frame><Frame>1</Frame>" +
+                        "</ChannelScalar></Channels></W3DAnimation>" +
+                        "</AssetDeclaration>");
+                    File.WriteAllText(hierarchyPath,
+                        "<AssetDeclaration xmlns='uri:ea.com:eala:asset'>" +
+                        "<W3DHierarchy id='TEST_RIG'>" +
+                        "<Pivot Name='ROOT' NameID='0' Parent='-1'/>" +
+                        "</W3DHierarchy></AssetDeclaration>");
+                    var roundTrip = W3xReader.Read(animationPath);
+                    Assert(roundTrip.Animations.Count == 1 &&
+                        roundTrip.Hierarchies.Count == 1 &&
+                        roundTrip.SourcePaths.Count == 2 &&
+                        roundTrip.Hierarchies[0].Pivots.Count == 1,
+                        "Animation-only W3X did not resolve matching _SKL.");
+                }
+                finally
+                {
+                    if (Directory.Exists(folder))
+                        Directory.Delete(folder, true);
+                }
+
                 Debug.Log("[C&C SAGE Phase 3A] Animation import self-test PASS: " +
                     "scalar channels, quaternion, frame rate, rest pose, " +
-                    "Y/Z conversion, pivot paths, missing rig and warnings.");
+                    "Y/Z conversion, pivot paths, missing rig, _SKL companion resolution and warnings.");
             }
             catch (Exception e)
             {
