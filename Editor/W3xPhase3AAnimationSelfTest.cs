@@ -33,7 +33,7 @@ namespace MusafirEx.CncSage.Editor
                     "</ChannelScalar>" +
                     "<ChannelScalar Pivot='0' Type='Visibility' " +
                     "FirstFrame='0'><Frame>1</Frame></ChannelScalar>" +
-                    "<ChannelQuaternion Pivot='0' Type='Quaternion' " +
+                    "<ChannelQuaternion Pivot='0' Type='Orientation' " +
                     "FirstFrame='0'>" +
                     "<Frame X='0' Y='0' Z='0' W='1'/>" +
                     "<Frame X='0' Y='0' Z='0.7071068' W='0.7071068'/>" +
@@ -94,6 +94,35 @@ namespace MusafirEx.CncSage.Editor
                     1f / 30f, -0.7071068f),
                     "Quaternion coordinate conversion wrong.");
 
+                // Real W3X authoring tools label quaternion channels
+                // Type="Orientation". Ensure animation clips can also be
+                // generated without any translation channels.
+                var rotationOnly = XDocument.Parse(
+                    "<W3DAnimation id='ROTATION_ONLY' Hierarchy='TEST_RIG' " +
+                    "NumFrames='2' FrameRate='30'><Channels>" +
+                    "<ChannelQuaternion Pivot='0' Type='Orientation' " +
+                    "FirstFrame='0'><Frame X='0' Y='0' Z='0' W='1'/>" +
+                    "<Frame X='0' Y='0' Z='0.7071068' W='0.7071068'/>" +
+                    "</ChannelQuaternion></Channels></W3DAnimation>");
+                var rotationData = W3xAnimationReader.Read(
+                    rotationOnly.Root, warnings);
+                Assert(rotationData != null &&
+                    rotationData.Channels.Count == 1 &&
+                    rotationData.Channels[0].Kind == "Quaternion",
+                    "Orientation-only source must parse as quaternion.");
+                var rotationDocument = new W3xDocument();
+                rotationDocument.Animations.Add(rotationData);
+                int rotationCount = W3xAnimationClipBuilder.Build(
+                    rotationDocument, root, hierarchy,
+                    new[] { node.transform }, (name, clip) =>
+                    {
+                        imported.Add(clip);
+                    });
+                Assert(rotationCount == 1 && imported.Count == 2 &&
+                    Near(imported[1], path, "m_LocalRotation.y",
+                        1f / 30f, -0.7071068f),
+                    "Orientation-only source must generate valid rotation clip.");
+
                 // Safety: must not create clips for a mismatched hierarchy.
                 int missing = W3xAnimationClipBuilder.Build(data, root,
                     new W3xHierarchyData { Identifier = "WRONG" },
@@ -101,7 +130,7 @@ namespace MusafirEx.CncSage.Editor
                     {
                         imported.Add(clip);
                     });
-                Assert(missing == 0 && imported.Count == 1,
+                Assert(missing == 0 && imported.Count == 2,
                     "Mismatched hierarchy must not create invalid clips.");
 
                 // End-to-end XML reader companion test: standalone _IDLA-
@@ -143,7 +172,8 @@ namespace MusafirEx.CncSage.Editor
 
                 Debug.Log("[C&C SAGE Phase 3A] Animation import self-test PASS: " +
                     "scalar channels, quaternion, frame rate, rest pose, " +
-                    "Y/Z conversion, pivot paths, missing rig, _SKL companion resolution and warnings.");
+                    "Y/Z conversion, Orientation-only clips, pivot paths, missing rig, " +
+                    "_SKL companion resolution and warnings.");
             }
             catch (Exception e)
             {

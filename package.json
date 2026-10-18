@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Experimental Phase 3A W3DAnimation import to Unity AnimationClip sub-assets; W3X editing/export from Phase 2 remains supported.",
+  "description": "Phase 3A W3X animation importer with Orientation quaternion support, read-only channel diagnostics and Phase 2 W3X round-trip preserved.",
   "unity": "2022.3",
   "keywords": ["command and conquer", "sage", "w3x", "w3d", "modding"],
   "author": {

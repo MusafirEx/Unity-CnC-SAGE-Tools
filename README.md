@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.4.0 Phase 3A preview: limited W3DAnimation XML → Unity AnimationClip import.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **animation export**, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet implemented**.
+**Status: 0.4.1 Phase 3A preview: Orientation quaternion channel compatibility and W3X animation diagnostics.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **animation export**, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet implemented**.
 
 ## Install in Unity
 
@@ -564,6 +564,51 @@ matching hierarchy are reported as warnings; the original
   for writing animation changes.
 - The new code **still requires Unity compilation and in-editor
   fixture testing** after this branch is merged.
+
+
+### Phase 3A v0.4.1 — Pitbull AnimationClip missing
+
+The 0.4.0 synthetic \`TEST_IDLE\` import and regression test passed, but
+the real \`GUPitbull_IDLA.W3X\` / \`GUPitbull_ATKA.W3X\` import created no
+visible \`AnimationClip\` sub-asset. The real files import SAGE pivots,
+so a lack of hierarchy alone cannot explain the missing clip.
+
+**Compatibility fix:** Existing W3X exporters, including the OpenSAGE
+Blender Plugin, write quaternion channels with
+\`<ChannelQuaternion Type="Orientation" ...>\`, whereas v0.4.0 accepted
+only \`Type="Quaternion"\` and \`Type="Rotation"\`. Version **0.4.1**
+also accepts \`Orientation\`, case-insensitively. It preserves the
+original XML and does not change the Phase 2 W3X exporter.
+
+**Diagnostic command:** Select an actual animation \`.w3x\` in the
+**Unity Project** window, e.g. \`GUPitbull_IDLA.W3X\`, then run:
+
+**Tools > C&C SAGE > Diagnose Selected W3X Animation**
+
+The Unity Console will now list:
+- The selected W3X path, \`W3DAnimation\` IDs, \`NumFrames\` and \`FrameRate\`
+- Referenced hierarchy name and the resolved pivot count
+- Raw channel node types (\`ChannelScalar\`, \`ChannelQuaternion\`, etc.)
+  plus their \`Type\` labels and sample \`Pivot\` / \`FirstFrame\` / key count
+- Number of parsed animation channels and actual generated
+  \`AnimationClip\` sub-assets
+- Unsupported formats, invalid keyframes and missing-hierarchy warnings
+
+The diagnostic is **read-only**. It does not mutate the asset, scene,
+animations or XML source. Copy the Console diagnostic output to the
+issue discussion if clips remain missing. This is necessary before
+adding speculative or unsupported channel encodings.
+
+The v0.4.1 **Run Phase 3A Animation Import Self-Test** now includes
+an \`Orientation\`-only animation without translation channels,
+and the package's sample uses that native W3X channel label.
+ScriptedImporter version **5 → 6** forces a reimport of existing W3X
+assets on package update.
+
+**Validation boundary:** Source-code checks are complete, but Unity
+compilation and **real Pitbull AnimationClip presence are not confirmed**
+until this PR is merged and the user's Unity project reloads it.
+Separate Phase 3B editing and Phase 3C export remain postponed.
 
 ## Roadmap
 
