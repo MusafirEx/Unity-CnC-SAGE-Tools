@@ -17,7 +17,7 @@ namespace MusafirEx.CncSage.Editor
         internal static void AppendNewStaticMeshes(
             XDocument output, GameObject root,
             IDictionary<string, GameObject> parts,
-            W3xExportCore.Report report)
+            string outputTextureDirectory, W3xExportCore.Report report)
         {
             if (output == null || output.Root == null)
                 throw new InvalidDataException("Missing W3X AssetDeclaration.");
@@ -59,10 +59,8 @@ namespace MusafirEx.CncSage.Editor
                     "Multiple W3DContainer declarations: new mesh " +
                     "attachment target is ambiguous. Export stopped.");
             var container = containerNodes.FirstOrDefault();
-            var fxTemplates = output.Root.Elements()
-                .Where(e => e.Name.LocalName == "W3DMesh")
-                .SelectMany(e => e.Elements()
-                    .Where(k => k.Name.LocalName == "FXShader")).ToArray();
+            var originalMeshDeclarations = output.Root.Elements()
+                .Where(e => e.Name.LocalName == "W3DMesh").ToArray();
 
             foreach (var extra in extras)
             {
@@ -118,7 +116,8 @@ namespace MusafirEx.CncSage.Editor
                         "cannot be exported safely.");
 
                 XElement xml = GenerateXml(
-                    id, mesh, transform, fxTemplates, part, report);
+                    id, mesh, transform, originalMeshDeclarations,
+                    part, outputTextureDirectory, report);
                 // Insert mesh declarations before container references.
                 var firstContainer = output.Root.Elements()
                     .FirstOrDefault(x => x.Name.LocalName == "W3DContainer");
@@ -147,7 +146,8 @@ namespace MusafirEx.CncSage.Editor
         }
 
         private static XElement GenerateXml(string id, Mesh mesh,
-            Matrix4x4 toPivot, XElement[] fxTemplates, GameObject part,
+            Matrix4x4 toPivot, XElement[] originalMeshDeclarations,
+            GameObject part, string outputTextureDirectory,
             W3xExportCore.Report report)
         {
             XNamespace ns = "uri:ea.com:eala:asset";
@@ -269,19 +269,9 @@ namespace MusafirEx.CncSage.Editor
             }
             result.Add(tris);
 
-            if (fxTemplates.Length > 0)
-            {
-                // Copy a known SAGE pass, never invent a new ShaderName.
-                result.Add(new XElement(fxTemplates[0]));
-                W3xExportAdvanced.PatchShaderTextures(result, part, report);
-                report.Notes.Add("NEW " + id +
-                    ": FXShader template copied from original W3X. " +
-                    "Review its shader technique and texture stages.");
-            }
-            else
-                report.Notes.Add("NEW " + id +
-                    ": source W3X has no FXShader template. " +
-                    "No material declaration created.");
+            W3xNewMeshMaterialResolver.Apply(result,
+                originalMeshDeclarations, part, outputTextureDirectory,
+                report);
 
             return result;
         }
