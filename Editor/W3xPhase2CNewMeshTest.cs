@@ -40,10 +40,10 @@ namespace MusafirEx.CncSage.Editor
                     .SetSageIdentifier("GPPITBULL.ORIGINAL");
                 sourceMesh = new Mesh();
                 sourceMesh.vertices = new[] {
-                    Vector3.zero, Vector3.right, Vector3.forward
+                    Vector3.zero, Vector3.right, Vector3.up
                 };
                 sourceMesh.normals = new[] {
-                    Vector3.up, Vector3.up, Vector3.up
+                    Vector3.forward, Vector3.forward, Vector3.forward
                 };
                 sourceMesh.uv = new[] {
                     Vector2.zero, Vector2.right, Vector2.up

@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.2.3 Phase 2B Project-asset workflow and missing-mesh diagnostics.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
+**Status: 0.3.0 Phase 2C preview: new static meshes.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
 
 ## Install in Unity
 
@@ -201,9 +201,83 @@ the Git package (Window > Package Manager, refresh/update). Do not edit
 \`Library/PackageCache\` manually or delete the W3X originals. Reimport the
 source and exported assets after resolving the Asset Database mismatch.
 
+
+## Phase 2C: new static W3X mesh export (v0.3.0 preview)
+
+### Confirmed Pitbull discrepancy from Unity Editor.log
+
+The **Compare Pitbull Editable vs Unity Skin Export** log identified
+\`GPPITBULL.NEWLabel\` as the single missing GameObject mesh in
+\`GPPitbull_unity_skin.w3x\`: one static MeshFilter/MeshRenderer with
+**24 vertices**. It was not present in original \`GPPitbull.w3x\`;
+Phase 2B silently skipped it because only original W3DMesh declarations
+were exported. **Phase 2C specifically fixes this class of omission.**
+
+### Export an editable Project prefab (no scene instance)
+
+1. Keep \`GPPitbull_Editable.prefab\` in \`Assets/CncSageEditable/\`, including
+   \`GPPITBULL.NEWLabel\`, a valid MeshFilter/MeshRenderer, and
+   \`CncSageMeshIdentity.SageIdentifier=GPPITBULL.NEWLabel\`.
+2. Select **the editable prefab asset in the Project window**.
+3. For static-only changes, choose **Tools > C&C SAGE > Export Selected W3X
+   (Including New Static Meshes)...**. This preserves the original skinned
+   source data and generates new static W3DMesh declarations.
+4. For edits to existing skin weights/vertices and new static meshes together,
+   choose **Tools > C&C SAGE > Export Selected W3X
+   (Skin & Shader Textures)...**; this Phase 2C mode now includes new static
+   meshes too. It retains Phase 2B's experimental skin restrictions.
+5. Save to a **new W3X filename** beside the original W3X (e.g.
+   \`GPPitbull_unity_meshes.w3x\`), select the output in Project, reimport,
+   and run **Tools > C&C SAGE > Compare Pitbull Editable vs Unity Skin Export**
+   when output name matches \`GPPitbull_unity_skin.w3x\`.
+   The comparator uses the two fixed Pitbull file names; use the new output
+   name \`GPPitbull_unity_skin.w3x\` to run that specific comparison.
+6. Run **Tools > C&C SAGE > Run Phase 2C New Mesh Self-Test** and check the
+   Console for \`New mesh self-test PASS\`. This tests 24 vertices, 8 triangles,
+   a known source FXShader, pivot attachment and XML validation entirely in
+   an isolated preview scene.
+
+### Exported structure
+
+The exporter appends a new \`W3DMesh\` with source-space positions,
+normals, UV0/UV1, shade indices, bounding data and triangles. It reverses
+Unity triangle winding for the W3X Y/Z coordinate convention. If the source
+contains one \`W3DContainer\`, the exporter appends a new \`SubObject\`
+referencing the mesh and its nearest existing SAGE pivot. No source
+declarations or assets are overwritten. Existing mesh declarations are
+preserved or edited by the previously selected mode.
+
+If the original file contains an \`FXShader\`, the first shader definition is
+copied to the new mesh, and its existing texture references can be updated
+from a valid Unity Project material. This is **template-based**, not a
+fully authored SAGE shader/texture-stage exporter. Verify the shader technique
+and texture stages for each added mesh in the target mod builder.
+
+### Phase 2C limitations
+
+- **New static meshes only**. The exporter explicitly rejects new
+  \`SkinnedMeshRenderer\` declarations. Existing skinned meshes follow the
+  Phase 2B export mode.
+- Each added mesh requires \`CncSageMeshIdentity\` with a new, unique
+  \`MODEL.PART\` ID, e.g. \`GPPITBULL.NEWLabel\`. The mesh must have exactly
+  one Unity submesh and at most one material.
+- Negative/singular transforms, malformed indices, degenerate triangles,
+  unsupported multi-container source files and untagged Mesh objects are
+  rejected to avoid incomplete W3X output.
+- With a single source \`W3DContainer\`, attachment is to the nearest existing
+  \`CncSagePivotInfo\` ancestor, or to pivot zero. Pivot positions and
+  topology are otherwise unchanged. New bones, skinning and animations are
+  not authored.
+- The default **Safe Roundtrip** command still intentionally does not add
+  new geometry, to preserve its prior behavior.
+- Reimport into Unity is the acceptance test for this milestone. The generated
+  XML is **not yet certified for the C&C3/Kane's Wrath asset-building toolchain**.
+- The RTS bridge currently reports Unity IPC disconnected; the PR requires
+  an actual editor compile and regression run before merge.
+
 ## Roadmap
 
 1. Validate geometry, coordinate system and UVs against legal user-provided sample W3X models.
 2. Validate Phase 1B hierarchy and materials, including companion _SKL W3X and external ART resolution.
-3. Validate Phase 2A/B edited W3X export, compare static/skin changes against Blender, then implement true new-topology and complete rigging/material round-trips.
+3. Validate Phase 2A/B/C export, including newly added static W3DMesh declarations, then implement new skin meshes, complete rigging/material round-trips and game toolchain validation.
 4. Add animation support, then investigate binary W3D and WrathEd toolchain validation.
