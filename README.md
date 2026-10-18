@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.3.2 Phase 2D preview: guarded skin editing in Prefab Mode.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
+**Status: 0.3.3 Phase 2D preview: skinned-mesh authoring and degenerate-triangle protection.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
 
 ## Install in Unity
 
@@ -394,6 +394,50 @@ the independent \`Mesh.asset\` already copied by
 - Editor source code has been statically audited, but actual Unity
   compilation, UI interaction and end-to-end Pitbull skin round-trip
   **still require live validation**.
+
+
+### Phase 2D: handling degenerate triangles and GUI state (v0.3.3)
+
+On October 18, 2026, the actual \`GPPitbull_Editable_Mesh_2.asset\`
+editor saved changes, but the advanced skin export stopped with:
+
+\`\`\`
+InvalidDataException: Degenerate triangle after vertex edit; export aborted.
+W3xExportCore.UpdateTrianglePlanes() -> W3xExportAdvanced.PatchSkin()
+\`\`\`
+
+The old exporter recomputed **every triangle plane after changing a single
+skin vertex**. Existing game models can contain zero-area triangles that
+should be preserved, not recalculated if their vertices are untouched.
+
+The fix:
+- Preserve the original \`Nrm\` and \`Dist\` of **unaffected triangles**,
+  even if an unrelated part of the source mesh has a degenerate face.
+- If an **affected** triangle is still degenerate, stop with its triangle
+  index and the three vertex indices. It is not safe to fabricate a plane.
+- When moving a skinned vertex in the Phase 2D editor, reject collapsed
+  triangles **before mutating the Mesh.asset**, and show a warning.
+- Mark mesh assets dirty while dragging/typing, **without synchronous
+  \`AssetDatabase.SaveAssets\` for every edit**. The explicit
+  **Save Mesh Asset** button queues saving on the next editor callback.
+  This reduces reimports during IMGUI events, which may contribute to
+  repeated \`the GUIStateObj is deleted, but is accessed\` warnings.
+- Extend **Run Phase 2D Skin Editing Self-Test** with unchanged-degenerate
+  source preservation, modified-degenerate rejection and safe move checks.
+
+**Recovery:** Reopen the editable prefab's \`GPPITBULL.NEWSKIN\`, select the
+recently moved vertex, and use **Undo** or move it away from neighboring
+vertices if it formed a zero-area triangle. Save the Mesh asset, select the
+editable Project prefab, and rerun **Export Selected W3X
+(Skin & Shader Textures)...**. If a failure remains, the exception now gives
+the exact affected triangle and vertex indices to investigate.
+
+The editor's position guard works in **Unity mesh-local space**. The exporter
+also reconstructs SAGE source-space geometry from the original skin weights
+and pivots, so **some invalid source-space edits may only be detected during
+export**. This PR does not add mesh topology authoring, AABTree rebuilds or
+new bone assignments. Unity recompile and real Pitbull re-export remain to
+be validated after merge.
 
 ## Roadmap
 
