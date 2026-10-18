@@ -74,18 +74,21 @@ namespace MusafirEx.CncSage.Editor
 
             ApplySlot(shader, identity == null ? null :
                     identity.DiffuseTexture,
+                identity == null ? "" : identity.DiffuseTextureName,
                 allowMaterial ? ReadMaterialTexture(mat,
                     "_BaseMap", "_MainTex") : null,
                 new[] { "DiffuseTexture", "Texture_0" },
                 "Diffuse", id, destinationDirectory, report);
             ApplySlot(shader, identity == null ? null :
                     identity.NormalTexture,
+                identity == null ? "" : identity.NormalTextureName,
                 allowMaterial ? ReadMaterialTexture(mat,
                     "_BumpMap", "_NormalMap") : null,
                 new[] { "NormalMap" },
                 "Normal", id, destinationDirectory, report);
             ApplySlot(shader, identity == null ? null :
                     identity.SpecularTexture,
+                identity == null ? "" : identity.SpecularTextureName,
                 allowMaterial ? ReadMaterialTexture(mat,
                     "_SpecGlossMap") : null,
                 new[] { "SpecMap" },
@@ -111,15 +114,25 @@ namespace MusafirEx.CncSage.Editor
 
         private static void ApplySlot(
             XElement shader, Texture2D explicitTexture,
-            Texture2D materialTexture, string[] candidateConstants,
-            string label, string meshId, string outputDirectory,
-            W3xExportCore.Report report)
+            string requestedName, Texture2D materialTexture,
+            string[] candidateConstants, string label, string meshId,
+            string outputDirectory, W3xExportCore.Report report)
         {
-            Texture2D texture = explicitTexture != null ?
-                explicitTexture : materialTexture;
+            Texture2D nameResolved = null;
+            if (explicitTexture == null && !string.IsNullOrWhiteSpace(requestedName))
+            {
+                nameResolved = FindNamedTexture(requestedName,
+                    outputDirectory);
+                if (nameResolved == null)
+                    report.Notes.Add("NEW " + meshId + " " + label +
+                        ": no matching texture for '" + requestedName +
+                        "' beside exported W3X. Trying material fallback.");
+            }
+            Texture2D texture = explicitTexture != null ? explicitTexture :
+                (nameResolved != null ? nameResolved : materialTexture);
             if (texture == null)
                 return;
-            bool mandatory = explicitTexture != null;
+            bool mandatory = explicitTexture != null || nameResolved != null;
 
             string file = AssetDatabase.GetAssetPath(texture);
             if (string.IsNullOrEmpty(file) ||
@@ -179,7 +192,46 @@ namespace MusafirEx.CncSage.Editor
             }
             report.Notes.Add("NEW " + meshId + " " + label +
                 " texture: " + newName + " (" +
-                (mandatory ? "Material Identity" : "Unity material") + ").");
+                (explicitTexture != null ? "Material Identity asset" :
+                    nameResolved != null ? "Material Identity texture name" :
+                    "Unity material") + ").");
+        }
+
+        private static Texture2D FindNamedTexture(
+            string name, string directory)
+        {
+            if (string.IsNullOrWhiteSpace(directory) ||
+                !Directory.Exists(directory))
+                return null;
+
+            name = name.Trim();
+            // Names are local texture IDs, never paths or URLs.
+            if (name.IndexOfAny(new[] { '/', '\\', ':' }) >= 0 ||
+                name == "." || name == "..")
+                throw new InvalidDataException(
+                    "Texture Identity name must be a local image base name.");
+            string stem = Path.GetFileNameWithoutExtension(name);
+            string assets = Path.GetFullPath("Assets").Replace('\\', '/');
+
+            foreach (var path in Directory.GetFiles(directory).OrderBy(x => x))
+            {
+                if (!SupportedExtensions.Any(ext =>
+                    path.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                if (!string.Equals(Path.GetFileNameWithoutExtension(path),
+                    stem, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                string absolute = Path.GetFullPath(path).Replace('\\', '/');
+                if (!absolute.StartsWith(assets + "/",
+                    StringComparison.OrdinalIgnoreCase))
+                    continue;
+                string assetPath = "Assets/" +
+                    absolute.Substring(assets.Length + 1);
+                var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+                if (tex != null)
+                    return tex;
+            }
+            return null;
         }
 
         private static void HandleUnresolvable(
