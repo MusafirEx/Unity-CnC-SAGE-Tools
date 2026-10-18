@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.3.4 Phase 2D preview: skinned-mesh authoring, degenerate-triangle protection and LINQ self-test compile fix.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
+**Status: 0.3.5 Phase 2D preview: skinned-mesh editing with safe locked-output fallback.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
 
 ## Install in Unity
 
@@ -443,6 +443,51 @@ be validated after merge.
 ### Phase 2D v0.3.4 — Unity compilation hotfix
 
 The Phase 2D self-test uses `sourcePlanes.Root.Elements().ToArray()` to verify the generated triangle planes, but v0.3.3 omitted the `System.Linq` namespace import. Unity 2022.3.62f3 therefore emitted CS1061 at `Editor/W3xPhase2DSkinEditSelfTest.cs:106`. Version 0.3.4 adds `using System.Linq;` to the Editor-only self-test. This fixes that specific missing extension-method import; no mesh, importer, exporter or Prefab Mode behavior was changed. After installing the Git package update, wait for Unity compilation to finish, then run **Tools > C&C SAGE > Run Phase 2D Skin Editing Self-Test**. Repeated Unity IMGUI `GUIStateObj is deleted` messages are a separate issue not proven resolved by this hotfix.
+
+
+### Phase 2D v0.3.5 — locked W3X output during advanced export
+
+The latest Unity Editor.log (18 October 2026) shows the **Phase 2D self-test
+PASS**, followed by a new **Windows file-commit failure**:
+
+\`\`\`
+System.IO.IOException: Unable to remove the file to be replaced
+  at System.IO.File.Replace(...)
+  at W3xExportMenu.ExportWithOptions(...)
+\`\`\`
+
+The export reached the staged file commit. The destination may have been
+locked by Unity's asset import, marked read-only or held by another Windows
+process; the log alone cannot establish which.
+
+**Changed behavior:**
+- The exporter writes and validates a W3X staging file in the destination
+  folder before replacing anything.
+- If no file exists at the destination, export uses that filename as usual.
+- If an existing destination cannot be replaced because of
+  \`IOException\` or \`UnauthorizedAccessException\`, the exporter **preserves
+  the existing W3X** and writes the validated output as a **new sibling**,
+  such as \`GPPitbull_unity_skin_copy_001.w3x\`. If 001 exists, it chooses
+  the next available number instead of overwriting.
+- The actual saved path is shown explicitly in the export dialog, console
+  and report. Reimport/inspect **the new copy**, not the old locked output.
+- If even the fallback cannot be saved, the validated staging file is
+  **retained** with an error message so it can be recovered manually.
+- The temporary filename contains a unique GUID, to avoid collisions with
+  concurrent or interrupted exports. Original source W3X remains protected.
+
+Run **Tools > C&C SAGE > Run Phase 2D Export File Safety Self-Test** to
+simulate a locked existing W3X and confirm the old file plus both generated
+copies are retained. This test only uses an isolated OS temporary folder.
+
+**To retry Pitbull:** select \`GPPitbull_Editable.prefab\` in Project,
+export with **Skin & Shader Textures**, and inspect the exact filename in
+the success dialog. A \`_copy_001.w3x\` result is a successful separate
+export, not a replacement of \`GPPitbull_unity_skin.w3x\`.
+
+This change does not solve Windows file locks globally; it safely avoids
+losing data when a previously generated W3X cannot be replaced. Full C&C3
+or Kane's Wrath game-builder validation is still separate.
 
 ## Roadmap
 
