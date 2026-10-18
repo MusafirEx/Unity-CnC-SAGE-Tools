@@ -18,7 +18,7 @@
         <Frame>0.5</Frame>
         <Frame>1</Frame>
       </ChannelScalar>
-      <ChannelQuaternion Type="Quaternion" Pivot="1" FirstFrame="0">
+      <ChannelQuaternion Type="Orientation" Pivot="1" FirstFrame="0">
         <Frame X="0" Y="0" Z="0" W="1"/>
         <Frame X="0" Y="0" Z="0.3826834" W="0.9238795"/>
         <Frame X="0" Y="0" Z="0.7071068" W="0.7071068"/>
