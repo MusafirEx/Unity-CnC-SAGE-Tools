@@ -439,7 +439,7 @@ namespace MusafirEx.CncSage.Editor
             {
                 W3xExportCore.UpdateBounds(source, outputVertices);
                 W3xExportCore.UpdateTrianglePlanes(triangles,
-                    sourceVertices, outputVertices);
+                    sourceVertices, outputVertices, vertexModified);
                 report.ChangedSkinVertices += changedVertices;
             }
 
