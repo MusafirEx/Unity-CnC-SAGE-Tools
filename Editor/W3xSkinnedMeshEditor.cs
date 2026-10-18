@@ -314,7 +314,8 @@ namespace MusafirEx.CncSage.Editor
                 EditorGUILayout.LabelField("Secondary",
                     BoneLabel(bw.boneIndex1));
 
-            bool canEditWeights = sourceHasSecondInfluence &&
+            bool canEditWeights = !sourceHasAabTree &&
+                sourceHasSecondInfluence &&
                 sourceBone0[vertexIndex] == bw.boneIndex0 &&
                 sourceBone1[vertexIndex] == bw.boneIndex1 &&
                 bw.boneIndex0 != bw.boneIndex1;
@@ -330,7 +331,9 @@ namespace MusafirEx.CncSage.Editor
                 EditorGUILayout.HelpBox(
                     "Weight painting requires two existing source " +
                     "influences with unchanged bone indices. Single-bone " +
-                    "vertices remain fixed.", MessageType.Info);
+                    "vertices remain fixed. AABTree also blocks " +
+                    "weight editing because inverse skin export could " +
+                    "change source-space positions.", MessageType.Info);
 
             EditorGUILayout.Space();
             if (GUILayout.Button("Save Mesh Asset"))
@@ -399,7 +402,7 @@ namespace MusafirEx.CncSage.Editor
 
         private void ApplyWeight(Mesh mesh, int index, float value)
         {
-            if (!sourceHasSecondInfluence ||
+            if (sourceHasAabTree || !sourceHasSecondInfluence ||
                 sourceBone0 == null || sourceBone1 == null)
                 return;
             BoneWeight bw = mesh.boneWeights[index];
