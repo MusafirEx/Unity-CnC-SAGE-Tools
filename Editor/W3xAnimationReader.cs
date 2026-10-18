@@ -104,6 +104,12 @@ namespace MusafirEx.CncSage.Editor
                         "; channel skipped.");
                 }
             }
+            if (data.Channels.Count == 0)
+                warnings.Add("Phase 3A: " + id +
+                    " has no supported importable channels (" +
+                    source.Length + " source nodes); no AnimationClip " +
+                    "will be created. Use Tools > C&C SAGE > " +
+                    "Diagnose Selected W3X Animation.");
             return data;
         }
 
@@ -118,8 +124,17 @@ namespace MusafirEx.CncSage.Editor
             if (scalar && type != "XTranslation" &&
                 type != "YTranslation" && type != "ZTranslation")
                 return null;
-            if (quaternion && type != "" &&
-                type != "Quaternion" && type != "Rotation")
+            // C&C / W3X exporters commonly encode quaternion channels
+            // as Type="Orientation" (not "Quaternion"). Preserve support
+            // for the initial test fixtures while accepting the actual
+            // SAGE enum name used by W3D source tools.
+            if (quaternion && !string.IsNullOrEmpty(type) &&
+                !string.Equals(type, "Orientation",
+                    StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(type, "Quaternion",
+                    StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(type, "Rotation",
+                    StringComparison.OrdinalIgnoreCase))
                 return null;
             if (!scalar && !quaternion)
                 return null;
