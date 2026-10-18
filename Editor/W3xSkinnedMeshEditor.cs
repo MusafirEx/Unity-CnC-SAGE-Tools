@@ -214,9 +214,16 @@ namespace MusafirEx.CncSage.Editor
 
             using (new EditorGUILayout.HorizontalScope())
             {
-                targetSkin = (SkinnedMeshRenderer)EditorGUILayout.ObjectField(
-                    "Skinned Renderer", targetSkin,
-                    typeof(SkinnedMeshRenderer), true);
+                var selectedSkin =
+                    (SkinnedMeshRenderer)EditorGUILayout.ObjectField(
+                        "Skinned Renderer", targetSkin,
+                        typeof(SkinnedMeshRenderer), true);
+                if (selectedSkin != targetSkin)
+                {
+                    targetSkin = selectedSkin;
+                    vertexIndex = 0;
+                    RefreshSource();
+                }
                 if (GUILayout.Button("Use Selected", GUILayout.Width(105)))
                     BindSelected();
             }
@@ -417,7 +424,8 @@ namespace MusafirEx.CncSage.Editor
             Mesh mesh;
             string warning;
             if (!TryGetEditableMesh(out mesh, out warning) ||
-                sourceBone0 == null || !showPositionHandle)
+                sourceBone0 == null ||
+                (!showPositionHandle && !showVertexDots))
                 return;
 
             var vertices = mesh.vertices;
@@ -431,16 +439,19 @@ namespace MusafirEx.CncSage.Editor
             Handles.Label(position,
                 "SAGE v" + vertexIndex + " (rest pose)");
 
-            using (new EditorGUI.DisabledScope(sourceHasAabTree))
+            if (showPositionHandle)
             {
-                EditorGUI.BeginChangeCheck();
-                var moved = Handles.PositionHandle(position,
-                    Quaternion.identity);
-                if (EditorGUI.EndChangeCheck() && !sourceHasAabTree)
+                using (new EditorGUI.DisabledScope(sourceHasAabTree))
                 {
-                    ApplyPosition(mesh, vertexIndex,
-                        transform.InverseTransformPoint(moved));
-                    Repaint();
+                    EditorGUI.BeginChangeCheck();
+                    var moved = Handles.PositionHandle(position,
+                        Quaternion.identity);
+                    if (EditorGUI.EndChangeCheck() && !sourceHasAabTree)
+                    {
+                        ApplyPosition(mesh, vertexIndex,
+                            transform.InverseTransformPoint(moved));
+                        Repaint();
+                    }
                 }
             }
 
