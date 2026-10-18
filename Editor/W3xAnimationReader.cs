@@ -164,7 +164,7 @@ namespace MusafirEx.CncSage.Editor
                         Scalar((string)f.Attribute("Y")),
                         Scalar((string)f.Attribute("Z")),
                         Scalar((string)f.Attribute("W")));
-                    if (q.sqrMagnitude <= 0.000001f)
+                    if (Quaternion.Dot(q, q) <= 0.000001f)
                         throw new InvalidDataException(
                             "Zero-length quaternion frame.");
                     result.Quaternions[i] = q.normalized;
