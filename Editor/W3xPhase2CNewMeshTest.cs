@@ -198,6 +198,39 @@ namespace MusafirEx.CncSage.Editor
                         "GUPitbull_NRM" &&
                         report.ChangedShaderTextures == 1,
                         "Existing normal texture was not mapped.");
+
+                    identity.SetSource("GPPITBULL.ORIGINAL",
+                        normalName: "GUPitbull_NRM",
+                        useAssignedMaterial: false);
+                    var namedResult = W3xExportCore.BuildDocument(
+                        original, root, options, out report);
+                    var namedMesh = namedResult.Root.Elements().First(x =>
+                        x.Name.LocalName == "W3DMesh" &&
+                        (string)x.Attribute("id") == "GPPITBULL.NEWLabel");
+                    var namedConstants = W3xExportCore.Child(
+                        W3xExportCore.Child(namedMesh, "FXShader"), "Constants");
+                    var namedSlot = namedConstants.Elements().First(x =>
+                        (string)x.Attribute("Name") == "NormalMap");
+                    Check(W3xExportCore.Child(namedSlot, "Value").Value ==
+                        "GUPitbull_NRM",
+                        "Name-based available image lookup was not applied.");
+
+                    identity.SetSource("GPPITBULL.ORIGINAL",
+                        normalName: "NONEXISTENT_TEXTURE_NAME",
+                        useAssignedMaterial: false);
+                    var absent = W3xExportCore.BuildDocument(
+                        original, root, options, out report);
+                    var absentMesh = absent.Root.Elements().First(x =>
+                        x.Name.LocalName == "W3DMesh" &&
+                        (string)x.Attribute("id") == "GPPITBULL.NEWLabel");
+                    var absentConstants = W3xExportCore.Child(
+                        W3xExportCore.Child(absentMesh, "FXShader"),
+                        "Constants");
+                    var absentSlot = absentConstants.Elements().First(x =>
+                        (string)x.Attribute("Name") == "NormalMap");
+                    Check(W3xExportCore.Child(absentSlot, "Value").Value ==
+                        "OLD_NRM",
+                        "Missing named image should leave source constant untouched.");
                 }
                 identity.SetSource("GPPITBULL.ORIGINAL",
                     useAssignedMaterial: false);
