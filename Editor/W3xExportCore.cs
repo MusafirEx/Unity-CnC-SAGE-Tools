@@ -24,6 +24,9 @@ namespace MusafirEx.CncSage.Editor
             public bool ExportSkinWeightsAndVertices;
             public bool ExportMaterialTextures;
             public bool ExportNewStaticMeshes;
+            // Only the new-mesh mode resolves images: textures must be
+            // siblings of the emitted W3X to survive Unity reimport.
+            public string OutputTextureDirectory;
         }
 
         internal sealed class Report
@@ -151,7 +154,8 @@ namespace MusafirEx.CncSage.Editor
 
             if (options.ExportNewStaticMeshes)
                 W3xNewMeshExporter.AppendNewStaticMeshes(
-                    output, selectedModel, parts, report);
+                    output, selectedModel, parts,
+                    options.OutputTextureDirectory, report);
 
             if (options.ExportPivotTransforms)
                 W3xExportAdvanced.PatchLocalPivots(output, selectedModel, report);

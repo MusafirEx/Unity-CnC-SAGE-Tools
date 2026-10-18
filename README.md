@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.3.0 Phase 2C preview: new static meshes.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
+**Status: 0.3.1 Phase 2C preview: new static meshes and material identities.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
 
 ## Install in Unity
 
@@ -274,6 +274,67 @@ and texture stages for each added mesh in the target mod builder.
   XML is **not yet certified for the C&C3/Kane's Wrath asset-building toolchain**.
 - The RTS bridge currently reports Unity IPC disconnected; the PR requires
   an actual editor compile and regression run before merge.
+
+
+## Phase 2C material identity (v0.3.1)
+
+A newly added static mesh such as \`GPPITBULL.NEWLabel\` already needs
+\`CncSageMeshIdentity\` for its unique W3DMesh ID. It can now **optionally**
+also have \`CncSageMaterialIdentity\` to choose its SAGE FXShader source and
+texture references. The original Unity MeshRenderer material still controls
+the editable prefab preview; the material identity controls which SAGE
+shader/texture declarations are **exported**.
+
+### Project-only authoring
+
+1. Open \`Assets/CncSageEditable/GPPitbull_Editable.prefab\` in **Prefab Mode**
+   (or select its child from the prefab hierarchy). You do not need to place
+   the model into the game's active scene.
+2. Select the added \`GPPITBULL.NEWLabel\` mesh and ensure it has
+   \`CncSageMeshIdentity\` with \`GPPITBULL.NEWLabel\`.
+3. Add component **C&C SAGE > Material Identity** to the same GameObject.
+4. In **Shader Template Mesh Id**, enter the ID of a mesh **already inside
+   original \`GPPitbull.w3x\`**, such as \`GPPITBULL.NEWSKIN\`, whose FXShader
+   technique/stages are suitable for the added mesh. This copies that shader's
+   \`ShaderName\`, \`TechniqueIndex\`, and original shader constants.
+5. Leave **Use Renderer Textures** enabled to read the assigned Unity
+   \`.mat\`'s \`_MainTex/_BaseMap\`, \`_BumpMap/_NormalMap\`, and
+   \`_SpecGlossMap\` when possible. Or explicitly drag a \`Texture2D\`
+   into **Diffuse/Normal/Specular Texture** fields. A dragged reference takes
+   precedence over the assigned Unity material.
+6. Alternatively, enter just the basename in the **Diffuse/Normal/Specular
+   Texture Name** field (for example \`GUPitbull_NRM\`). The exporter searches
+   for supported \`.tga/.dds/.png/.jpg/.jpeg/.bmp\` image files **beside the
+   emitted W3X**. An explicit image reference has priority, then a resolvable
+   texture name, then the assigned material texture.
+7. Select \`GPPitbull_Editable.prefab\` **in Project** and choose
+   **Tools > C&C SAGE > Export Selected W3X (Including New Static Meshes)...**.
+   Export beside the original W3X/texture files. Reimport the new W3X
+   and inspect \`GPPITBULL.NEWLabel\`'s material and texture.
+
+### Safety and compatibility
+
+- When **Shader Template Mesh Id** is empty, the Phase 2C legacy behavior
+  (first source FXShader) remains available for backward compatibility. If
+  the specified template mesh is missing, or has multiple FXShader passes,
+  the export is rejected instead of guessing.
+- Texture files must be valid imported images in the Unity \`Assets/\` folder
+  and next to the output W3X. Explicit invalid/misplaced texture assignments
+  cause an error. A missing optional texture **name** or unusable Unity
+  material texture produces a report note and retains the original shader
+  constant. External \`ART:\` paths are **not copied or resolved globally**.
+- The exporter modifies only compatible texture constants **already present
+  in the chosen template** (\`DiffuseTexture\`/\`Texture_0\`, \`NormalMap\`,
+  \`SpecMap\`). An explicit override with no corresponding FXShader constant
+  is rejected. The SAGE shader cannot be inferred safely from a Unity
+  Standard/URP material and the actual TW/KW shader pass must be validated.
+- This component is **optional for new meshes**; it does not alter the
+  previously preserved shader declarations of existing source meshes.
+- **Tools > C&C SAGE > Run Phase 2C New Mesh Self-Test** now checks shader
+  template selection, explicit unsaved texture rejection and (when the
+  GUPitbull sample texture exists) file/name-based normal texture mapping.
+- Full game-ready material authoring, arbitrary new FXShader creation and
+  automatic texture copying are not yet implemented.
 
 ## Roadmap
 

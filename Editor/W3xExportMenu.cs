@@ -152,6 +152,10 @@ namespace MusafirEx.CncSage.Editor
                     return;
                 }
 
+                // The W3X importer currently locates texture files beside
+                // the output W3X, so only those are safe to reference.
+                options.OutputTextureDirectory =
+                    Path.GetDirectoryName(destination);
                 W3xExportCore.Report report;
                 XDocument exported = W3xExportCore.BuildDocument(
                     original, model, options, out report);
