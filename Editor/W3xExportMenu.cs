@@ -165,36 +165,63 @@ namespace MusafirEx.CncSage.Editor
                 W3xExportCore.ValidateMetadataPreservation(original, exported,
                     options.ExportPivotTransforms, options.ExportNewStaticMeshes);
 
-                // Write to a staging file, validate after serialization, then
-                // move to destination. Failure does not damage existing W3X.
-                string temp = destination + ".sage-export-tmp";
-                if (File.Exists(temp))
-                    throw new IOException("Temporary path already exists: " + temp);
+                // Serialize to a unique sidecar on the same filesystem and
+                // reload/validate before making any destination changes.
+                // Never delete a validated export after an I/O commit failure.
+                string temp = destination + "." +
+                    Guid.NewGuid().ToString("N") + ".sage-export-tmp";
+                bool stagedValidated = false;
+                bool savedAsCopy = false;
+                string actualDestination = destination;
                 try
                 {
                     W3xExportCore.Save(exported, temp);
                     XDocument reloaded = W3xExportCore.LoadSource(temp);
                     W3xExportCore.ValidateMetadataPreservation(original, reloaded,
                         options.ExportPivotTransforms, options.ExportNewStaticMeshes);
-                    // Replace atomically on the same filesystem, preserving
-                    // an existing export if the replacement operation fails.
-                    if (File.Exists(destination))
-                        File.Replace(temp, destination, null);
-                    else
-                        File.Move(temp, destination);
+                    stagedValidated = true;
+                    actualDestination = W3xSafeDestination.Commit(
+                        temp, destination, out savedAsCopy);
                 }
                 finally
                 {
                     if (File.Exists(temp))
-                        File.Delete(temp);
+                    {
+                        if (stagedValidated)
+                            Debug.LogError(
+                                "[C&C SAGE Phase 2] Validated W3X retained " +
+                                "after an unsuccessful file commit: " + temp +
+                                "\nThe existing destination was not intentionally " +
+                                "modified. Inspect the staged file before retrying.");
+                        else
+                            File.Delete(temp);
+                    }
+                }
+
+                if (savedAsCopy)
+                {
+                    report.Notes.Add(
+                        "Windows could not replace the existing output. " +
+                        "Validated W3X saved as a separate copy: " +
+                        actualDestination);
+                    Debug.LogWarning(
+                        "[C&C SAGE Phase 2] Existing W3X could not be " +
+                        "replaced (possibly in use or read-only). " +
+                        "Saved a validated NEW copy instead: " +
+                        actualDestination + "\nOriginal output: " + destination);
                 }
 
                 // Project assets are imported by Unity when generated under Assets.
                 AssetDatabase.Refresh();
                 Debug.Log("[C&C SAGE Phase 2] W3X exported: " +
-                    destination + "\n" + report.Describe());
+                    actualDestination + "\n" + report.Describe());
                 EditorUtility.DisplayDialog("C&C SAGE Export",
-                    "Exported a new W3X XML file.\n\n" +
+                    (savedAsCopy ?
+                        "Existing W3X could not be replaced. " +
+                        "Saved a separate validated file instead:\n" +
+                        actualDestination + "\n\n" :
+                        "Exported W3X:\n" +
+                        actualDestination + "\n\n") +
                     report.Describe() +
                     "\n\nOnly explicitly selected export modes can modify " +
                     "skinning, pivot or texture references. This is not yet " +
