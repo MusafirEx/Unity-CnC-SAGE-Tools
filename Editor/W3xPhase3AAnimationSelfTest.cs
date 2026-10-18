@@ -1,0 +1,143 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Xml.Linq;
+using UnityEditor;
+using UnityEngine;
+
+namespace MusafirEx.CncSage.Editor
+{
+    /// <summary>
+    /// In-memory Phase 3A checks. No assets or scene objects are saved.
+    /// Does not claim compatibility with extracted game animations.
+    /// </summary>
+    internal static class W3xPhase3AAnimationSelfTest
+    {
+        [MenuItem("Tools/C&C SAGE/Run Phase 3A Animation Import Self-Test")]
+        private static void Run()
+        {
+            GameObject root = null;
+            var imported = new List<AnimationClip>();
+            try
+            {
+                var document = XDocument.Parse(
+                    "<AssetDeclaration xmlns='uri:ea.com:eala:asset'>" +
+                    "<W3DAnimation id='TEST_IDLE' Hierarchy='TEST_RIG' " +
+                    "NumFrames='3' FrameRate='30'><Channels>" +
+                    "<ChannelScalar Pivot='0' Type='XTranslation' " +
+                    "FirstFrame='0'><Frame>0</Frame><Frame>0.5</Frame>" +
+                    "<Frame>1</Frame></ChannelScalar>" +
+                    "<ChannelScalar Pivot='0' Type='YTranslation' " +
+                    "FirstFrame='1'><Frame>0</Frame><Frame>3</Frame>" +
+                    "</ChannelScalar>" +
+                    "<ChannelScalar Pivot='0' Type='Visibility' " +
+                    "FirstFrame='0'><Frame>1</Frame></ChannelScalar>" +
+                    "<ChannelQuaternion Pivot='0' Type='Quaternion' " +
+                    "FirstFrame='0'>" +
+                    "<Frame X='0' Y='0' Z='0' W='1'/>" +
+                    "<Frame X='0' Y='0' Z='0.7071068' W='0.7071068'/>" +
+                    "<Frame X='0' Y='0' Z='0.7071068' W='0.7071068'/>" +
+                    "</ChannelQuaternion></Channels></W3DAnimation>" +
+                    "</AssetDeclaration>");
+
+                var data = new W3xDocument();
+                var warnings = data.Warnings;
+                var a = W3xAnimationReader.Read(
+                    document.Root.Elements().First(), warnings);
+                Assert(a != null && a.Channels.Count == 3,
+                    "Valid scalar and quaternion channels should parse.");
+                Assert(warnings.Any(w => w.Contains("Visibility")),
+                    "Visibility channel must be explicitly skipped.");
+                data.Animations.Add(a);
+                var hierarchy = new W3xHierarchyData
+                {
+                    Identifier = "TEST_RIG"
+                };
+                hierarchy.Pivots.Add(new W3xPivotData
+                {
+                    Name = "ROOT",
+                    Parent = -1,
+                    Translation = new Vector3(2, 3, 4),
+                    Rotation = Quaternion.identity
+                });
+                data.Hierarchies.Add(hierarchy);
+                root = new GameObject("W3X");
+                var holder = new GameObject("SAGE_Pivots");
+                holder.transform.SetParent(root.transform, false);
+                var node = new GameObject("ROOT");
+                node.transform.SetParent(holder.transform, false);
+                node.transform.localPosition = new Vector3(2, 4, 3);
+                var count = W3xAnimationClipBuilder.Build(data, root,
+                    hierarchy, new[] { node.transform }, (name, clip) =>
+                    {
+                        imported.Add(clip);
+                    });
+                Assert(count == 1 && imported.Count == 1,
+                    "Exactly one valid clip must be created.");
+                var output = imported[0];
+                Assert(Mathf.Abs(output.frameRate - 30f) < .001f,
+                    "W3X frame rate must be retained.");
+                Assert(Mathf.Abs(output.length - 2f / 30f) < .001f,
+                    "Frames must map to frameIndex/frameRate.");
+                string path = "SAGE_Pivots/ROOT";
+                Assert(Near(output, path, "m_LocalPosition.x",
+                    2f / 30f, 3f),
+                    "XTranslation plus source rest position wrong.");
+                Assert(Near(output, path, "m_LocalPosition.y",
+                    2f / 30f, 4f),
+                    "Source Z-to-Unity Y axis conversion wrong.");
+                Assert(Near(output, path, "m_LocalPosition.z",
+                    2f / 30f, 6f),
+                    "YTranslation plus rest pose / Z axis wrong.");
+                Assert(Near(output, path, "m_LocalRotation.y",
+                    1f / 30f, -0.7071068f),
+                    "Quaternion coordinate conversion wrong.");
+
+                // Safety: must not create clips for a mismatched hierarchy.
+                int missing = W3xAnimationClipBuilder.Build(data, root,
+                    new W3xHierarchyData { Identifier = "WRONG" },
+                    new[] { node.transform }, (name, clip) =>
+                    {
+                        imported.Add(clip);
+                    });
+                Assert(missing == 0 && imported.Count == 1,
+                    "Mismatched hierarchy must not create invalid clips.");
+
+                Debug.Log("[C&C SAGE Phase 3A] Animation import self-test PASS: " +
+                    "scalar channels, quaternion, frame rate, rest pose, " +
+                    "Y/Z conversion, pivot paths, missing rig and warnings.");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(
+                    "[C&C SAGE Phase 3A] Animation import self-test FAILED: " +
+                    e);
+            }
+            finally
+            {
+                foreach (var clip in imported)
+                    if (clip != null)
+                        UnityEngine.Object.DestroyImmediate(clip);
+                if (root != null)
+                    UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        private static bool Near(AnimationClip clip, string path,
+            string property, float time, float expected)
+        {
+            var binding = EditorCurveBinding.FloatCurve(
+                path, typeof(Transform), property);
+            var curve = AnimationUtility.GetEditorCurve(clip, binding);
+            return curve != null &&
+                Mathf.Abs(curve.Evaluate(time) - expected) < .003f;
+        }
+
+        private static void Assert(bool condition, string message)
+        {
+            if (!condition)
+                throw new InvalidDataException(message);
+        }
+    }
+}
