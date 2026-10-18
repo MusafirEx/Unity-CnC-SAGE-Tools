@@ -13,6 +13,8 @@ namespace MusafirEx.CncSage.Editor
         private const string MenuPath =
             "Tools/C&C SAGE/Export Selected W3X (Safe Roundtrip)...";
 
+        private const string NewMeshMenuPath =
+            "Tools/C&C SAGE/Export Selected W3X (Including New Static Meshes)...";
         private const string SkinMenuPath =
             "Tools/C&C SAGE/Export Selected W3X (Skin & Shader Textures)...";
         private const string PivotMenuPath =
@@ -23,6 +25,29 @@ namespace MusafirEx.CncSage.Editor
         {
             ExportWithOptions(new W3xExportCore.ExportOptions(),
                 "_unity_roundtrip");
+        }
+
+        [MenuItem(NewMeshMenuPath)]
+        private static void ExportNewMeshes()
+        {
+            if (!EditorUtility.DisplayDialog("C&C SAGE Phase 2C",
+                "Export new static W3DMesh declarations and container " +
+                "bindings. This is a preview feature: only one submesh, " +
+                "existing SAGE pivots and original shader templates are " +
+                "supported. No new skinned meshes or animation. " +
+                "The original W3X is never overwritten.",
+                "Export new W3X copy", "Cancel"))
+                return;
+            ExportWithOptions(new W3xExportCore.ExportOptions
+            {
+                ExportNewStaticMeshes = true
+            }, "_unity_meshes");
+        }
+
+        [MenuItem(NewMeshMenuPath, true)]
+        private static bool ValidateNewMeshExport()
+        {
+            return ValidateSelection();
         }
 
         [MenuItem(SkinMenuPath)]
@@ -38,7 +63,8 @@ namespace MusafirEx.CncSage.Editor
             ExportWithOptions(new W3xExportCore.ExportOptions
             {
                 ExportSkinWeightsAndVertices = true,
-                ExportMaterialTextures = true
+                ExportMaterialTextures = true,
+                ExportNewStaticMeshes = true
             }, "_unity_skin");
         }
 
@@ -83,7 +109,7 @@ namespace MusafirEx.CncSage.Editor
                 return;
             }
 
-            if (!ConfirmUnsupportedNewMeshes(assetPath, model))
+            if (!ConfirmUnsupportedNewMeshes(assetPath, model, options))
                 return;
 
             string originalPath = Path.GetFullPath(assetPath);
@@ -133,7 +159,7 @@ namespace MusafirEx.CncSage.Editor
                 // Ensure all nonmesh declarations (including includes, material
                 // references, hierarchies, collisions and animations) survive.
                 W3xExportCore.ValidateMetadataPreservation(original, exported,
-                    options.ExportPivotTransforms);
+                    options.ExportPivotTransforms, options.ExportNewStaticMeshes);
 
                 // Write to a staging file, validate after serialization, then
                 // move to destination. Failure does not damage existing W3X.
@@ -145,7 +171,7 @@ namespace MusafirEx.CncSage.Editor
                     W3xExportCore.Save(exported, temp);
                     XDocument reloaded = W3xExportCore.LoadSource(temp);
                     W3xExportCore.ValidateMetadataPreservation(original, reloaded,
-                        options.ExportPivotTransforms);
+                        options.ExportPivotTransforms, options.ExportNewStaticMeshes);
                     // Replace atomically on the same filesystem, preserving
                     // an existing export if the replacement operation fails.
                     if (File.Exists(destination))
@@ -179,7 +205,8 @@ namespace MusafirEx.CncSage.Editor
         }
 
         private static bool ConfirmUnsupportedNewMeshes(
-            string sourcePath, GameObject edited)
+            string sourcePath, GameObject edited,
+            W3xExportCore.ExportOptions options)
         {
             var original = AssetDatabase.LoadAssetAtPath<GameObject>(
                 sourcePath);
@@ -212,6 +239,36 @@ namespace MusafirEx.CncSage.Editor
                         x.GetComponent<CncSageMeshIdentity>() == null)
                     .Select(x => x.name))
                 .Distinct().ToArray();
+
+            // Phase 2C supports new MeshFilter/MeshRenderer parts.
+            // Warn only about omitted new parts when using an older mode,
+            // or about unsupported new SKIN and untagged Mesh objects.
+            var skinnedNewIds = edited.GetComponentsInChildren<
+                CncSageMeshIdentity>(true)
+                .Where(x => !string.IsNullOrEmpty(x.SageIdentifier) &&
+                    !sourceIds.Contains(x.SageIdentifier) &&
+                    x.GetComponent<SkinnedMeshRenderer>() != null)
+                .Select(x => x.SageIdentifier).Distinct(
+                    StringComparer.OrdinalIgnoreCase).ToArray();
+            if (options.ExportNewStaticMeshes &&
+                skinnedNewIds.Length > 0)
+            {
+                EditorUtility.DisplayDialog(
+                    "C&C SAGE: New Skin Unsupported",
+                    "New skinned meshes cannot be exported in Phase 2C:\n" +
+                    string.Join("\n", skinnedNewIds), "OK");
+                return false;
+            }
+            if (options.ExportNewStaticMeshes && untagged.Length > 0)
+            {
+                EditorUtility.DisplayDialog("C&C SAGE: Untagged Meshes",
+                    "Give each new rendered mesh a unique " +
+                    "CncSageMeshIdentity before exporting:\n" +
+                    string.Join("\n", untagged), "OK");
+                return false;
+            }
+            if (options.ExportNewStaticMeshes)
+                return true;
 
             if (newIds.Length == 0 && untagged.Length == 0)
                 return true;
