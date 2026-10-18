@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.3.5 Phase 2D preview: skinned-mesh editing with safe locked-output fallback.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Export, binary W3D, animation clips, exact SAGE shading, full HLOD assembly and validated Kane's Wrath round-tripping are **not yet implemented**.
+**Status: 0.4.0 Phase 3A preview: limited W3DAnimation XML → Unity AnimationClip import.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **animation export**, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet implemented**.
 
 ## Install in Unity
 
@@ -488,6 +488,82 @@ export, not a replacement of \`GPPitbull_unity_skin.w3x\`.
 This change does not solve Windows file locks globally; it safely avoids
 losing data when a previously generated W3X cannot be replaced. Full C&C3
 or Kane's Wrath game-builder validation is still separate.
+
+
+## Phase 3A: W3DAnimation import (v0.4.0 preview)
+
+Phase 2 \`W3X → Unity → editable Prefab → W3X\` remains the supported
+**source-backed** workflow. Phase 3A **does not** implement native
+FBX/Unity-prefab → W3X or animation editing/export.
+
+### What is now imported
+
+The \`.w3x\` ScriptedImporter recognizes \`W3DAnimation\` declarations and
+attempts to generate **AnimationClip sub-assets** under the imported W3X
+asset. A clip is created **only when its declared \`Hierarchy\` matches a
+fully resolved \`W3DHierarchy\`** whose pivots are represented as Unity
+Transforms. This includes hierarchies in the same W3X file and a
+separate sibling \`<HierarchyId>_SKL.W3X\` or \`<HierarchyId>.W3X\`
+when that sibling declares exactly the referenced hierarchy.
+
+Initial supported XML channels:
+
+- \`ChannelScalar Type="XTranslation"\`, \`YTranslation\`,
+  \`ZTranslation\` with \`Pivot\`, \`FirstFrame\` and numeric
+  \`<Frame>...</Frame>\` values.
+- \`ChannelQuaternion Type="Quaternion"\` or \`Type="Rotation"\`
+  with \`<Frame X="..." Y="..." Z="..." W="..."/>\` entries.
+- \`NumFrames\` / \`FrameRate\` and per-channel \`FirstFrame\`.
+- Source pivot indices and Unity's X/Y/Z coordinate conversion,
+  reusing the Phase 1B \`SAGE_Pivots\` Transform hierarchy.
+
+The importer samples these tracks at W3X frame rate and emits Unity
+local-position and local-quaternion curves. **It provisionally treats
+animation translation and rotation channels as deltas from the source
+pivot rest transform**; this assumption must be verified against
+actual Kane's Wrath \`_IDLA\` and \`_ATKA\` animations. Empty,
+undecodable, or unsupported channels do not produce fabricated curves.
+Unknown channel types (e.g. \`Visibility\`, Euler rotation, compressed
+channels), unsupported animation files, and clips lacking a
+matching hierarchy are reported as warnings; the original
+\`W3DAnimation\` XML remains untouched for Phase 2 export.
+
+### Try Phase 3A in Unity
+
+1. Update the Git package to version **0.4.0** and allow scripts to compile.
+2. Run **Tools > C&C SAGE > Run Phase 3A Animation Import Self-Test**.
+   The PASS log validates sample frame timing, local pivot paths,
+   coordinate conversions, quaternion curves and missing-hierarchy safety.
+3. In Package Manager, import the **Minimal W3X Mesh** package sample
+   into Assets, or copy \`Samples~/MinimalW3X/Phase3AAnimatedPivot.w3x\`
+   from this repository into the project's Assets folder.
+4. Select \`Phase3AAnimatedPivot.w3x\` and expand the Project asset.
+   Look for the \`PHASE3A_DEMO\` **AnimationClip** sub-asset and
+   \`SAGE_Pivots/ROOT/ARM\` in the imported hierarchy.
+5. Open the clip in an Animation/Animator preview workflow.
+   The importer does not create a controller, rig avatar, standalone
+   \`.anim\` asset or legacy \`Animation\` component automatically.
+6. For real \`_IDLA.w3x\` or \`_ATKA.w3x\` files, place a matching
+   source \`_SKL.w3x\` in the same folder (or ensure the hierarchy is
+   included). Check warnings to learn which channel formats remain
+   unsupported before proceeding to Phase 3B.
+
+### Important limits
+
+- No animation export or edit round-trip in Phase 3A.
+- Clips are **imported read-only sub-assets**. Duplicate or extract
+  them to independent \`.anim\` assets before direct Unity editing;
+  Phase 3B will formalize an editable workflow.
+- No binding to unrelated skeletons, guessed pivots or fabricated
+  hierarchy data. No binary \`.w3d\` or compressed channels.
+- Timeline interpolation and quaternion/rest-pose semantics may
+  differ on real SAGE source assets; current coverage uses repository
+  fixtures rather than proven in-game samples.
+- Existing source-preserving export continues to retain
+  \`W3DAnimation\` XML verbatim; it does not use the imported curves
+  for writing animation changes.
+- The new code **still requires Unity compilation and in-editor
+  fixture testing** after this branch is merged.
 
 ## Roadmap
 
