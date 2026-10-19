@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.4.2 Phase 3A preview: root-pivot / prefab animation-binding audit.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **animation export**, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet implemented**.
+**Status: 0.4.3 Phase 3A preview: preserve W3X translation-axis sparsity and omit zero-offset position curves.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **animation export**, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet implemented**.
 
 ## Install in Unity
 
@@ -653,6 +653,60 @@ and that a mismatched target root is detected.
 or a direct run in Unity for observed results. This change does not
 yet claim that the real Pitbull animations play correctly, and it
 does not alter the Phase 2 source-preserving W3X export.
+
+
+### Phase 3A v0.4.3 — unexpected BODY / B_TURRET position tracks
+
+**Issue:** The v0.4.2 clip builder emitted all three Unity
+\`m_LocalPosition.x/y/z\` curves whenever a pivot had *any*
+\`ChannelScalar Type="XTranslation"/"YTranslation"/"ZTranslation"\`
+source. This can introduce unwanted rest-pose overrides on
+\`BODY\` and \`B_TURRET\`, and it obscures which axes the actual W3X
+authored.
+
+**Fix:** Each scalar channel now emits only its own axis:
+source X → Unity X, source Y → Unity Z, source Z → Unity Y. Absent
+source axes remain **unkeyed**; they retain the prefab's own rest
+position. Source scalar channels whose values are **all zero** are
+treated as no-op rest-pose offsets and also do not generate curves.
+Actual **nonzero** translation channels are preserved. Quaternion
+rotation is unchanged. The importer still assumes source scalar
+values are rest-pose deltas, so cross-model retargeting is not yet
+validated.
+
+The original W3X XML remains unchanged; Phase 2 export remains
+source preserving. Importer version **6 → 7** reimports existing
+W3X assets when this update is installed.
+
+**Concrete check with \`AURazDro_RUNA\`:**
+1. After installing v0.4.3, reimport the original
+   \`AURazDro_RUNA.w3x\` and inspect its **AnimationClip sub-asset**.
+2. Run **Tools > C&C SAGE > Audit Selected Animation Pivot Bindings**
+   while selecting the imported clip or original W3X asset. You may
+   also select the intended visual prefab for a hierarchy check.
+3. The updated audit prints focused \`BODY\`, \`B_TURRET\` and
+   \`ROOTTRANSFORM\` source/clip comparisons: source X/Y/Z translation
+   channel presence, imported X/Y/Z position curve presence, raw
+   scalar keyframe ranges and \`ZERO-ONLY\` markers.
+4. Any \`WARNING: EXTRA POSITION CURVE\` means the chosen clip contains
+   a Unity position curve for an axis **not authored in the source**.
+   If real W3X source contains nonzero translation keys, the importer
+   must not discard them merely because the bone is named BODY or
+   B_TURRET.
+5. **Important:** A standalone \`AURAZDRO_RUNA.anim\` is an independent
+   copy. Updating the W3X importer will **not** rewrite that existing
+   \`.anim\` file; extract/copy a fresh clip from the reimported W3X
+   after verifying the source clip. The binding audit attempts to
+   locate a same-named sibling \`.w3x\` to compare with such older copies.
+6. Run **Tools > C&C SAGE > Run Phase 3A Animation Import Self-Test**;
+   it now asserts that absent position axes and all-zero translation
+   channels do not result in unwanted curves.
+
+**Verification boundary:** The v0.4.3 changes are source-reviewed
+but need Unity compilation, real-source clip-curve inspection and
+visual playback validation before Phase 3A is considered complete.
+Inherited/world-space motion from a rotating parent is not evidence
+that a pivot has a local position curve.
 
 ## Roadmap
 
