@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.6.3 Phase 3C preview: add new position and Orientation channels for existing SAGE pivots.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **existing-channel editing and new-track export on source pivots** is now available as a Phase 3C preview, while animation roundtrip/game-toolchain validation, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet completed**.
+**Status: 0.7.0 Phase 3D preview: read-only AnimationClip ↔ reimported W3X frame/structure validation and zero-only-channel regression.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **existing-channel editing and new-track export on source pivots** is now available as a Phase 3C preview, while animation roundtrip/game-toolchain validation, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet completed**.
 
 ## Install in Unity
 
@@ -966,6 +966,99 @@ been added, but actual Unity compilation, real RazorDrones/Pitbull
 edited-animation roundtrip and WrathEd/game toolchain checks are
 needed before treating Phase 3C as complete. Full animation
 roundtrip verification is the separate Phase 3D.
+
+
+## Phase 3D v0.7.0 — Full animation round-trip audit (preview)
+
+The original RazorDrones \`AURAZDRO_RUNA\` has already been edited,
+exported to a **NEW W3X**, reimported into Unity, and the animation
+played successfully on the original SKN according to user testing.
+This confirms that **that particular real-animation playback**
+worked; it does **not** establish general compatibility across
+different SAGE animations or with the Kane's Wrath compiler.
+
+Phase 3D provides a **read-only, numerical and structural comparison**
+so the same workflow can be tested consistently on Run/Idle/Attack
+animations with the original W3DHierarchy intact.
+
+### Check a real edited animation
+
+1. Update Git UPM package to **0.7.0**; ensure Unity compiles.
+2. Run **Tools > C&C SAGE > Run Phase 3C Animation Export Self-Test**
+   and **Tools > C&C SAGE > Run Phase 3D Round-Trip Self-Test**.
+3. In Unity's **Project** window Ctrl+select **exactly one**
+   Phase 3B \`*_Editable.anim\` (or its corresponding
+   \`*_Source.asset\`) **and exactly one exported Phase 3C \`.w3x\`
+   source file**. Do not select the original source \`.w3x\` here.
+   The original source is discovered by the Phase 3B metadata's GUID.
+4. Open **Tools > C&C SAGE > Validate Phase 3D Animation Round Trip**.
+   It resolves the output W3X's imported AnimationClip by the
+   original animation ID, then reads the original and exported W3X
+   XML **without modifying any assets**.
+5. Check the Unity Console for a **PASS/FAIL** audit:
+   - Source vs exported W3X channel count and added channels
+   - Non-animation XML preserved, unknown channel blocks unchanged,
+     original channel count and metadata intact
+   - Every **source frame**, on every source pivot path, comparing
+     local position X/Y/Z and quaternion rotation after Unity
+     reimport, including new EYE translation tracks
+   - Maximum sampled position difference (tolerance **0.002 Unity
+     units**) and rotation angle difference (**0.5°**)
+   - Up to 30 individual mismatch descriptions with pivot paths
+6. If **FAIL**, compare the reported curve path and frame with
+   the exported clip in Unity's Animation window and the source
+   W3X channel XML. Do **not** alter the source/prefab automatically
+   in response to an audit.
+
+**Important:** At any pivot lacking a position/rotation curve,
+the audit uses its **original hierarchy rest transform** as the
+default. This is a local-pose comparison, not motion in world
+space. A hierarchy that uses more complex \`FixupMatrix\`,
+interpolation, Unity-authored subframe keys or SAGE-specific
+runtime rules can require separate visual investigation.
+The audit samples at the original integer frame rate only:
+**Unity tangents, intermediate subframes, compiled-game W3D and
+Kane's Wrath runtime compatibility are outside this validation**.
+
+### Zero-offset channel regression fix
+
+The original Phase 3C synthetic self-test failed on
+\`BODY.YTranslation\` although its W3X source values were
+**all zero**. Phase 3A deliberately does not author such a
+position delta curve; Unity may independently generate
+unmodified sibling local position components when animating
+the same Transform. Phase 3D's narrowly scoped correction:
+- Does **not** claim that a zero-only source channel should
+  evaluate at a nonzero coordinate in the Unity baseline.
+- Preserves untouched all-zero source scalar XML channels if
+  the corresponding sampled edited curve matches the imported
+  baseline, even if Unity generated an implicit component.
+- Still exports a **real edited change** to a source channel;
+  the rest of the Phase 3C exporter and new EYE channel support
+  is unchanged.
+
+### Automated synthetic regression
+
+**Tools > C&C SAGE > Run Phase 3D Round-Trip Self-Test** runs
+entirely in memory and checks:
+- W3X animation import, independent editable clip, exported
+  source-backed X/ZTranslation edits, and reimport
+- A new EYE Unity \`m_LocalPosition.y\` → SAGE
+  \`ZTranslation\` channel remains present in the reimported clip
+- Original zero-only translation and unknown Visibility
+  channels remain untouched
+- Edited versus reimported sampled frame values pass numerical
+  tolerance and unrelated XML is preserved
+- Deliberately altered reimported position or unrelated
+  non-animation XML is detected and fails
+
+**Acceptance boundary:** The C# source has been reviewed and the
+self-tests authored, but this version still requires Unity
+compilation and the actual Phase 3D audit on the real
+\`AURAZDRO_RUNA_Editable.anim\` and
+\`AURazDro_RUNA_unity_anim.w3x\`. Do not mark the feature
+fully validated until both pass. WrathEd compilation and
+Kane's Wrath runtime loading require separate tests.
 
 ## Roadmap
 

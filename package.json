@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Experimental Phase 3C: export edited and new X/Y/Z or Orientation tracks on existing SAGE pivots to safe W3X XML copies.",
+  "description": "Experimental Phase 3D: read-only edited animation vs reimported W3X frame and XML preservation validation.",
   "unity": "2022.3",
   "keywords": ["command and conquer", "sage", "w3x", "w3d", "modding"],
   "author": {
