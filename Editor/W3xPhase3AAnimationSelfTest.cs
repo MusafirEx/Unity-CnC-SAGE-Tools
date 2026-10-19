@@ -169,6 +169,32 @@ namespace MusafirEx.CncSage.Editor
                     "X-only animation must include the X rest offset.");
 
 
+                // Source Z maps to Unity Y (not Unity Z). Other
+                // coordinates must remain completely unkeyed.
+                var zOnly = XDocument.Parse(
+                    "<W3DAnimation id='Z_ONLY' Hierarchy='TEST_RIG' " +
+                    "NumFrames='2' FrameRate='30'><Channels>" +
+                    "<ChannelScalar Pivot='0' Type='ZTranslation' " +
+                    "FirstFrame='0'><Frame>0</Frame><Frame>1</Frame>" +
+                    "</ChannelScalar></Channels></W3DAnimation>");
+                var zOnlyData = W3xAnimationReader.Read(zOnly.Root, warnings);
+                var zOnlyDocument = new W3xDocument();
+                zOnlyDocument.Animations.Add(zOnlyData);
+                int zOnlyCount = W3xAnimationClipBuilder.Build(
+                    zOnlyDocument, root, hierarchy,
+                    new[] { node.transform }, (name, clip) =>
+                    {
+                        imported.Add(clip);
+                    });
+                Assert(zOnlyCount == 1 && imported.Count == 4,
+                    "Single source-Z translation must generate one clip.");
+                Assert(Has(imported[3], path, "m_LocalPosition.y") &&
+                       !Has(imported[3], path, "m_LocalPosition.x") &&
+                       !Has(imported[3], path, "m_LocalPosition.z") &&
+                       Near(imported[3], path, "m_LocalPosition.y",
+                           1f / 30f, 5f),
+                    "Source Z-only must animate Unity Y and preserve X/Z.");
+
                 // Some real W3X channels explicitly key zero offsets on
                 // pivots that should otherwise stay at the authored rest
                 // position. These must not create position curves.
@@ -188,7 +214,7 @@ namespace MusafirEx.CncSage.Editor
                     {
                         imported.Add(clip);
                     });
-                Assert(zeroCount == 0 && imported.Count == 3,
+                Assert(zeroCount == 0 && imported.Count == 4,
                     "Zero-only source rest-offset must not create " +
                     "unnecessary position curves or empty clips.");
 
@@ -199,7 +225,7 @@ namespace MusafirEx.CncSage.Editor
                     {
                         imported.Add(clip);
                     });
-                Assert(missing == 0 && imported.Count == 3,
+                Assert(missing == 0 && imported.Count == 4,
                     "Mismatched hierarchy must not create invalid clips.");
 
                 // End-to-end XML reader companion test: standalone _IDLA-
