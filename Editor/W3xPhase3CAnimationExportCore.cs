@@ -360,6 +360,315 @@ namespace MusafirEx.CncSage.Editor
             return output;
         }
 
+        private sealed class NewChannel
+        {
+            internal int Pivot;
+            internal string Kind;
+            internal string Path;
+            internal bool Euler;
+            internal readonly HashSet<string> Properties =
+                new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        /// <summary>
+        /// Accept only local Transform positions / full quaternion or
+        /// full Euler rotation tracks for existing SAGE pivot indices.
+        /// Source channels never inferred by arbitrary bone names.
+        /// </summary>
+        private static List<NewChannel> ClassifyNewChannels(
+            Dictionary<string, AnimationCurve> curves,
+            HashSet<string> existing,
+            Dictionary<string, int> pivotPaths,
+            HashSet<string> originalKinds, XElement[] rawXml)
+        {
+            var additions = new Dictionary<string, NewChannel>(
+                StringComparer.Ordinal);
+            foreach (var signature in curves.Keys)
+            {
+                if (existing.Contains(signature))
+                    continue;
+                var parts = signature.Split('\n');
+                int pivot;
+                if (parts.Length != 3 ||
+                    parts[1] != typeof(Transform).FullName ||
+                    !pivotPaths.TryGetValue(parts[0], out pivot))
+                    throw new InvalidDataException(
+                        "Cannot export Unity animation curve '" +
+                        signature.Replace('\n', ' ') +
+                        "': not an original SAGE pivot Transform path.");
+
+                string kind = null;
+                bool euler = false;
+                string prop = parts[2];
+                switch (prop)
+                {
+                    case "m_LocalPosition.x": kind = "XTranslation"; break;
+                    case "m_LocalPosition.z": kind = "YTranslation"; break;
+                    case "m_LocalPosition.y": kind = "ZTranslation"; break;
+                    default:
+                        if (prop.StartsWith("m_LocalRotation.",
+                            StringComparison.Ordinal))
+                        {
+                            string axis = prop.Substring(
+                                "m_LocalRotation.".Length);
+                            if ("xyzw".Contains(axis) && axis.Length == 1)
+                                kind = "Quaternion";
+                        }
+                        else
+                        {
+                            string[] forms =
+                            {
+                                "localEulerAnglesRaw.",
+                                "localEulerAnglesBaked.",
+                                "localEulerAngles."
+                            };
+                            foreach (string form in forms)
+                            {
+                                if (!prop.StartsWith(form,
+                                    StringComparison.Ordinal))
+                                    continue;
+                                string axis = prop.Substring(form.Length);
+                                if (axis.Length == 1 &&
+                                    "xyz".Contains(axis))
+                                {
+                                    kind = "Quaternion";
+                                    euler = true;
+                                }
+                                break;
+                            }
+                        }
+                        break;
+                }
+                if (kind == null)
+                    throw new InvalidDataException(
+                        "Unsupported new animation property '" + prop +
+                        "' on " + parts[0] +
+                        ". Only local position X/Y/Z and complete " +
+                        "quaternion/Euler rotation are supported.");
+
+                string key = pivot.ToString(CultureInfo.InvariantCulture) +
+                    ":" + kind;
+                if (originalKinds.Contains(key) ||
+                    HasRawSourceChannel(rawXml, pivot, kind))
+                    throw new InvalidDataException(
+                        "Source channel already exists but could not be " +
+                        "safely matched: pivot " + pivot + " " + kind);
+                NewChannel group;
+                if (!additions.TryGetValue(key, out group))
+                {
+                    group = new NewChannel
+                    {
+                        Pivot = pivot,
+                        Kind = kind,
+                        Path = parts[0],
+                        Euler = euler
+                    };
+                    additions.Add(key, group);
+                }
+                if (group.Euler != euler)
+                    throw new InvalidDataException(
+                        "Mixed Euler and quaternion rotation curves on " +
+                        parts[0] + ". Keep only one rotation representation.");
+                group.Properties.Add(prop);
+            }
+            var result = additions.Values
+                .OrderBy(a => a.Pivot)
+                .ThenBy(a => a.Kind, StringComparer.Ordinal)
+                .ToList();
+            foreach (var group in result)
+            {
+                if (group.Kind != "Quaternion")
+                    continue;
+                var expected = group.Euler ?
+                    new[] { "x", "y", "z" } :
+                    new[] { "x", "y", "z", "w" };
+                string prefix = group.Euler ?
+                    group.Properties.First()
+                        .Substring(0, group.Properties.First()
+                            .LastIndexOf('.') + 1) :
+                    "m_LocalRotation.";
+                if (group.Properties.Count != expected.Length ||
+                    expected.Any(axis =>
+                        !group.Properties.Contains(prefix + axis)))
+                    throw new InvalidDataException(
+                        "New rotation on " + group.Path +
+                        " must include all " + expected.Length +
+                        " axes of one rotation curve representation.");
+            }
+            return result;
+        }
+
+        private static bool HasRawSourceChannel(
+            IEnumerable<XElement> channels, int pivot, string kind)
+        {
+            foreach (var channel in channels)
+            {
+                int index;
+                if (!int.TryParse((string)channel.Attribute("Pivot"),
+                    NumberStyles.Integer, CultureInfo.InvariantCulture,
+                    out index) || index != pivot)
+                    continue;
+                string t = ((string)channel.Attribute("Type") ?? "")
+                    .Trim();
+                if (kind == "Quaternion" &&
+                    (channel.Name.LocalName == "ChannelQuaternion" ||
+                     channel.Name.LocalName == "ChannelQuat"))
+                    return true;
+                if (kind != "Quaternion" &&
+                    channel.Name.LocalName == "ChannelScalar" &&
+                    string.Equals(t, kind,
+                        StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
+
+        private static void AppendNewChannels(
+            XElement clonedAnimation, W3xHierarchyData hierarchy,
+            W3xAnimationData animation,
+            Dictionary<string, AnimationCurve> curves,
+            List<NewChannel> additions, Report report)
+        {
+            var channels = clonedAnimation.Elements()
+                .Single(e => e.Name.LocalName == "Channels");
+            var ns = channels.Name.Namespace;
+            if (channels.Elements().Count() + additions.Count > 2048)
+                throw new InvalidDataException(
+                    "New channels exceed the W3X reader's limit of 2048.");
+            foreach (var addition in additions)
+            {
+                var rest = hierarchy.Pivots[addition.Pivot];
+                var frames = new List<XElement>();
+                bool moves = false;
+                Quaternion last = Quaternion.identity;
+                if (addition.Kind != "Quaternion")
+                {
+                    AnimationCurve curve = GetCurve(curves,
+                        addition.Path, PositionProperty(addition.Kind));
+                    ValidateCurveRange(curve, animation);
+                    for (int frame = 0; frame < animation.NumFrames; frame++)
+                    {
+                        float value = curve.Evaluate(
+                            frame / animation.FrameRate) -
+                            RestValue(rest, addition.Kind);
+                        CheckFinite(value, addition.Path);
+                        if (Mathf.Abs(value) > PositionTolerance)
+                            moves = true;
+                        frames.Add(new XElement(ns + "Frame",
+                            Format(value)));
+                    }
+                    if (moves)
+                        channels.Add(new XElement(ns + "ChannelScalar",
+                            new XAttribute("Pivot", addition.Pivot),
+                            new XAttribute("Type", addition.Kind),
+                            new XAttribute("FirstFrame", 0), frames));
+                }
+                else
+                {
+                    AnimationCurve[] q = addition.Euler ?
+                        EulerCurves(curves, addition) :
+                        RotationCurves(curves, addition.Path);
+                    if (q == null)
+                        throw new InvalidDataException(
+                            "Rotation curves are incomplete for " +
+                            addition.Path);
+                    foreach (var curve in q)
+                        ValidateCurveRange(curve, animation);
+                    for (int frame = 0; frame < animation.NumFrames; frame++)
+                    {
+                        float time = frame / animation.FrameRate;
+                        Quaternion delta = addition.Euler ?
+                            EulerSourceQuaternion(q, time, rest.Rotation) :
+                            EditedSourceQuaternion(q, time, rest.Rotation);
+                        if (!Equivalent(delta, Quaternion.identity))
+                            moves = true;
+                        if (frame > 0 && Quaternion.Dot(last, delta) < 0)
+                            delta = Negate(delta);
+                        last = delta;
+                        frames.Add(new XElement(ns + "Frame",
+                            new XAttribute("X", Format(delta.x)),
+                            new XAttribute("Y", Format(delta.y)),
+                            new XAttribute("Z", Format(delta.z)),
+                            new XAttribute("W", Format(delta.w))));
+                    }
+                    if (moves)
+                        channels.Add(new XElement(ns + "ChannelQuaternion",
+                            new XAttribute("Pivot", addition.Pivot),
+                            new XAttribute("Type", "Orientation"),
+                            new XAttribute("FirstFrame", 0), frames));
+                }
+                if (moves)
+                {
+                    report.AddedChannels++;
+                    report.AddedFrames += animation.NumFrames;
+                    report.Notes.Add("Added: pivot " + addition.Pivot +
+                        " " + addition.Kind + " (" + addition.Path + ")");
+                }
+                else
+                    report.Notes.Add("No-op new channel skipped: pivot " +
+                        addition.Pivot + " " + addition.Kind);
+            }
+        }
+
+        private static AnimationCurve[] EulerCurves(
+            Dictionary<string, AnimationCurve> bindings,
+            NewChannel addition)
+        {
+            var result = new AnimationCurve[3];
+            string prefix = addition.Properties.First();
+            prefix = prefix.Substring(0, prefix.LastIndexOf('.') + 1);
+            var axes = new[] { "x", "y", "z" };
+            for (int i = 0; i < axes.Length; i++)
+            {
+                result[i] = GetCurve(bindings, addition.Path,
+                    prefix + axes[i]);
+                if (result[i] == null)
+                    return null;
+            }
+            return result;
+        }
+
+        private static Quaternion EulerSourceQuaternion(
+            AnimationCurve[] curves, float time, Quaternion rest)
+        {
+            Vector3 angles = new Vector3(
+                curves[0].Evaluate(time), curves[1].Evaluate(time),
+                curves[2].Evaluate(time));
+            CheckFinite(angles.x, "Euler rotation");
+            CheckFinite(angles.y, "Euler rotation");
+            CheckFinite(angles.z, "Euler rotation");
+            Quaternion unity = Quaternion.Euler(angles);
+            return ToSourceDelta(unity, rest);
+        }
+
+        private static void ValidateCurveRange(
+            AnimationCurve curve, W3xAnimationData animation)
+        {
+            if (curve == null || curve.length == 0)
+                throw new InvalidDataException(
+                    "Cannot export empty animation curve.");
+            float limit = (animation.NumFrames - 1) /
+                animation.FrameRate;
+            foreach (var key in curve.keys)
+            {
+                if (float.IsNaN(key.time) ||
+                    float.IsInfinity(key.time) ||
+                    key.time < -0.00001f ||
+                    key.time > limit + 0.00001f)
+                    throw new InvalidDataException(
+                        "New animation key lies outside the original " +
+                        "NumFrames/FPS. Clip length changes are unsupported.");
+                CheckFinite(key.value, "animation key");
+            }
+        }
+
+        private static void CheckFinite(float value, string where)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value))
+                throw new InvalidDataException(
+                    "Nonfinite curve value in " + where);
+        }
+
         private sealed class ChannelMapping
         {
             internal int Pivot;
@@ -578,7 +887,14 @@ namespace MusafirEx.CncSage.Editor
                 throw new InvalidDataException(
                     "Invalid or zero Unity quaternion in edited clip.");
             q.Normalize();
-            var source = new Quaternion(-q.x, -q.z, -q.y, q.w);
+            return ToSourceDelta(q, rest);
+        }
+
+        private static Quaternion ToSourceDelta(
+            Quaternion unity, Quaternion rest)
+        {
+            var source = new Quaternion(-unity.x, -unity.z,
+                -unity.y, unity.w);
             return (Quaternion.Inverse(rest) * source).normalized;
         }
 
