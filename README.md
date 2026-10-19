@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.4.3 Phase 3A preview: preserve W3X translation-axis sparsity and omit zero-offset position curves.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **animation export**, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet implemented**.
+**Status: 0.5.0 Phase 3B preview: independent editable W3X AnimationClips, Animator Controller and preview prefab workspace.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **animation export**, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet implemented**.
 
 ## Install in Unity
 
@@ -707,6 +707,88 @@ but need Unity compilation, real-source clip-curve inspection and
 visual playback validation before Phase 3A is considered complete.
 Inherited/world-space motion from a rotating parent is not evidence
 that a pivot has a local position curve.
+
+
+## Phase 3B: Editable animation workspace (v0.5.0 preview)
+
+Phase 3A can import W3X \`W3DAnimation\` into Unity AnimationClip
+sub-assets. These imported clips are not reliable permanent editing
+targets: **reimporting their W3X replaces importer-owned sub-assets**.
+Phase 3B adds a non-destructive creation workflow for independent,
+editable \`.anim\` copies, a matching \`AnimatorController\`, and a
+**separate preview prefab** that references the selected model.
+The existing Phase 2 W3X model/mesh exporter is unchanged.
+
+### Create a workspace in the Project window
+
+1. Import your original SAGE model \`.w3x\` and any corresponding
+   animation \`_IDLA.w3x\`, \`_ATKA.w3x\` and other W3X sources.
+   Alternatively use an existing **editable W3X Project prefab** for
+   the target model. Do **not** pick an arbitrary FBX/native prefab:
+   these still lack the SAGE pivot IDs required for this workflow.
+2. Ctrl/Shift-select **one model** (\`.prefab\` or imported model
+   \`.w3x\`) **AND 1–32 original W3X AnimationClip sub-assets** in
+   the Unity **Project** window. Selecting the parent animation
+   \`.w3x\` files instead of their clips also works. Do **not**
+   select old standalone \`.anim\` copies as original sources.
+3. Open **Tools > C&C SAGE > Create Phase 3B Editable Animation Workspace**.
+   The validation rejects clips whose Transform paths or source pivot
+   indices/names do not match the selected model, rather than
+   silently retargeting them.
+4. Confirm creation. A new, uniquely named directory will appear
+   under \`Assets/CncSageEditable/Animations/\` containing:
+   - \`<animation>_Editable.anim\`: independent writable animation
+     copy, retaining source curves and frame rate
+   - \`<animation>_Source.asset\`: source W3X GUID, original animation
+     ID, hierarchy ID, FPS/frame count, target model GUID and original
+     curve-binding signatures for future Phase 3C comparison
+   - \`<model>_Preview.controller\`: separate Animator Controller
+     with each editable clip as a state
+   - \`<model>_AnimationPreview.prefab\`: separate preview model
+     with the Animator Controller on its root
+5. Double-click the generated \`_AnimationPreview.prefab\` to open
+   **Prefab Mode**, then use **Window > Animation > Animation**.
+   Choose the editable clip and edit keyframes/curves on the
+   model's \`SAGE_Pivots\` hierarchy. The default Animator state is
+   the first selected clip. Use its controller to switch states
+   when inspecting multiple animations.
+6. Check \`BODY\`, \`B_TURRET\`, and pivot 0 using
+   **Tools > C&C SAGE > Audit Selected Animation Pivot Bindings**.
+   The audit can locate the original W3X source of new Phase 3B
+   \`.anim\` files through their GUID-based metadata sidecars.
+
+**Run self-test:** **Tools > C&C SAGE > Run Phase 3B Animation Editing Self-Test**.
+The test creates an in-memory model and clip to check:
+- Original imported curve values are unchanged after modifying a clone
+- Binding paths, frame rate and source provenance are preserved
+- Compatible pivot IDs/names are accepted, incompatible ones rejected
+- No scene or Project assets are saved by the self-test
+
+### Limits and safety
+
+- **No animation export back to W3X yet.** Phase 3C will map edited
+  .anim curves to SAGE channels while preserving all source XML not
+  understood by the importer. Phase 3B is only safe clip editing and
+  preview.
+- Workspace creation **never overwrites** the original W3X,
+  selected model prefab, existing AnimationClips or controller. New
+  workspaces use unique directories; incomplete creation removes
+  only the new directory. The active scene is not modified.
+- The preview prefab is for **animation editing/inspection**, not
+  a replacement model export asset. Preview mesh/material references
+  can still refer to the selected model's original assets; only the
+  animation clips and workspace controller are independent.
+- Changing W3X import settings or reinstalling a package updates
+  importer-generated sub-assets but **does not alter** independent
+  Phase 3B \`.anim\` files. If the source changes, run the pivot
+  audit again before editing/exporting.
+- Phase 3B does not invent missing pivot translation/rotation
+  channels, retarget mismatched models, build new rigs, or handle
+  unsupported compressed animation formats. Some real SAGE clips
+  may still have interpolation/rest-pose differences.
+- Code is prepared for Unity 2022.3 LTS and requires **live Unity
+  compilation plus a real-model preview test** before Phase 3B is
+  considered complete.
 
 ## Roadmap
 
