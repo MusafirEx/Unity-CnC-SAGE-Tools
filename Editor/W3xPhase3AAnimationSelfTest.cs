@@ -84,9 +84,8 @@ namespace MusafirEx.CncSage.Editor
                 Assert(Near(output, path, "m_LocalPosition.x",
                     2f / 30f, 3f),
                     "XTranslation plus source rest position wrong.");
-                Assert(Near(output, path, "m_LocalPosition.y",
-                    2f / 30f, 4f),
-                    "Source Z-to-Unity Y axis conversion wrong.");
+                Assert(!Has(output, path, "m_LocalPosition.y"),
+                    "No source ZTranslation: Unity Y must remain unkeyed.");
                 Assert(Near(output, path, "m_LocalPosition.z",
                     2f / 30f, 6f),
                     "YTranslation plus rest pose / Z axis wrong.");
@@ -136,6 +135,39 @@ namespace MusafirEx.CncSage.Editor
                     Near(imported[1], path, "m_LocalRotation.y",
                         1f / 30f, -0.7071068f),
                     "Orientation-only source must generate valid rotation clip.");
+                Assert(!Has(imported[1], path, "m_LocalPosition.x") &&
+                       !Has(imported[1], path, "m_LocalPosition.y") &&
+                       !Has(imported[1], path, "m_LocalPosition.z"),
+                    "Quaternion-only BODY/B_TURRET-style pivots must " +
+                    "not emit any position tracks.");
+
+                // A single source XTranslation must produce exactly
+                // m_LocalPosition.x, not synthetic Y and Z rest tracks.
+                var xOnly = XDocument.Parse(
+                    "<W3DAnimation id='X_ONLY' Hierarchy='TEST_RIG' " +
+                    "NumFrames='2' FrameRate='30'><Channels>" +
+                    "<ChannelScalar Pivot='0' Type='XTranslation' " +
+                    "FirstFrame='0'><Frame>0</Frame><Frame>1</Frame>" +
+                    "</ChannelScalar></Channels></W3DAnimation>");
+                var xOnlyData = W3xAnimationReader.Read(xOnly.Root, warnings);
+                var xOnlyDocument = new W3xDocument();
+                xOnlyDocument.Animations.Add(xOnlyData);
+                int xOnlyCount = W3xAnimationClipBuilder.Build(
+                    xOnlyDocument, root, hierarchy,
+                    new[] { node.transform }, (name, clip) =>
+                    {
+                        imported.Add(clip);
+                    });
+                Assert(xOnlyCount == 1 && imported.Count == 3,
+                    "Single-axis translation must generate one clip.");
+                Assert(Has(imported[2], path, "m_LocalPosition.x") &&
+                       !Has(imported[2], path, "m_LocalPosition.y") &&
+                       !Has(imported[2], path, "m_LocalPosition.z"),
+                    "An X-only source generated unwanted Y/Z position curves.");
+                Assert(Near(imported[2], path, "m_LocalPosition.x",
+                        1f / 30f, 3f),
+                    "X-only animation must include the X rest offset.");
+
 
                 // Safety: must not create clips for a mismatched hierarchy.
                 int missing = W3xAnimationClipBuilder.Build(data, root,
@@ -144,7 +176,7 @@ namespace MusafirEx.CncSage.Editor
                     {
                         imported.Add(clip);
                     });
-                Assert(missing == 0 && imported.Count == 2,
+                Assert(missing == 0 && imported.Count == 3,
                     "Mismatched hierarchy must not create invalid clips.");
 
                 // End-to-end XML reader companion test: standalone _IDLA-
@@ -186,7 +218,8 @@ namespace MusafirEx.CncSage.Editor
 
                 Debug.Log("[C&C SAGE Phase 3A] Animation import self-test PASS: " +
                     "scalar channels, quaternion, frame rate, rest pose, " +
-                    "Y/Z conversion, Orientation-only clips, pivot paths, " +
+                    "Y/Z conversion, sparse-axis and rotation-only clips, " +
+                    "pivot paths, " +
                     "root binding verification, missing rig, " +
                     "_SKL companion resolution and warnings.");
             }
@@ -204,6 +237,14 @@ namespace MusafirEx.CncSage.Editor
                 if (root != null)
                     UnityEngine.Object.DestroyImmediate(root);
             }
+        }
+
+        private static bool Has(AnimationClip clip, string path,
+            string property)
+        {
+            return AnimationUtility.GetEditorCurve(clip,
+                EditorCurveBinding.FloatCurve(
+                    path, typeof(Transform), property)) != null;
         }
 
         private static bool Near(AnimationClip clip, string path,
