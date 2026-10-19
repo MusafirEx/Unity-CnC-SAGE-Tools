@@ -66,6 +66,7 @@ namespace MusafirEx.CncSage.Editor
             GameObject preview = null;
             Scene previewScene = default(Scene);
             bool sceneCreated = false;
+            bool createdSuccessfully = false;
             try
             {
                 EnsureFolder();
@@ -175,6 +176,7 @@ namespace MusafirEx.CncSage.Editor
 
                 Selection.activeObject = loaded;
                 EditorGUIUtility.PingObject(loaded);
+                createdSuccessfully = true;
                 Debug.Log("[C&C SAGE Phase 3B] Workspace CREATED: " +
                     workspace + " | editable clips=" + editable.Count +
                     " | Animator Controller=" + controllerPath +
@@ -187,7 +189,17 @@ namespace MusafirEx.CncSage.Editor
             {
                 Debug.LogError(
                     "[C&C SAGE Phase 3B] Workspace creation failed: " + ex);
-                if (!string.IsNullOrEmpty(workspace) &&
+            }
+            finally
+            {
+                // Release all temporary references BEFORE deleting any
+                // partially created controller, clips or preview prefab.
+                if (preview != null)
+                    UnityEngine.Object.DestroyImmediate(preview);
+                if (sceneCreated)
+                    EditorSceneManager.ClosePreviewScene(previewScene);
+                if (!createdSuccessfully &&
+                    !string.IsNullOrEmpty(workspace) &&
                     AssetDatabase.IsValidFolder(workspace))
                 {
                     // This unique directory is created exclusively by
@@ -196,13 +208,6 @@ namespace MusafirEx.CncSage.Editor
                     Debug.LogWarning(
                         "[C&C SAGE Phase 3B] Incomplete workspace removed.");
                 }
-            }
-            finally
-            {
-                if (preview != null)
-                    UnityEngine.Object.DestroyImmediate(preview);
-                if (sceneCreated)
-                    EditorSceneManager.ClosePreviewScene(previewScene);
             }
         }
 
@@ -255,10 +260,15 @@ namespace MusafirEx.CncSage.Editor
             if (hierarchy == null)
                 return "No source SAGE hierarchy named '" +
                     animation.HierarchyName + "'.";
-            var pivots = target.GetComponentsInChildren<CncSagePivotInfo>(
-                true).ToDictionary(p => p.PivotIndex, p => p);
-            if (pivots.Count == 0)
+            var targetPivots =
+                target.GetComponentsInChildren<CncSagePivotInfo>(true);
+            if (targetPivots.Length == 0)
                 return "Model has no CncSagePivotInfo pivots.";
+            if (targetPivots.GroupBy(p => p.PivotIndex).Any(g =>
+                g.Count() > 1))
+                return "Model contains duplicate SAGE pivot indices; " +
+                    "resolve its hierarchy before creating a workspace.";
+            var pivots = targetPivots.ToDictionary(p => p.PivotIndex, p => p);
             foreach (var idx in animation.Channels.Select(c => c.PivotIndex)
                 .Distinct())
             {
