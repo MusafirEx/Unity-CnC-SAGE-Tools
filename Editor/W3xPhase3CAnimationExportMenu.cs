@@ -53,9 +53,10 @@ namespace MusafirEx.CncSage.Editor
                 "Source: " + sourcePath + "\n" +
                 "Original animation ID: " +
                     provenance.OriginalAnimationId + "\n\n" +
-                "Only changed, EXISTING X/Y/Z translation and quaternion " +
-                "channel frames are supported. Unknown channels, all " +
-                "other declarations, and the original W3X are preserved.\n\n" +
+                "Existing X/Y/Z translation and quaternion channels " +
+                "can be edited. New translation or rotation channels " +
+                "can be added on EXISTING SAGE pivots only. Unknown " +
+                "channels and original W3X XML are preserved.\n\n" +
                 "Output must be in the SAME directory as the source, " +
                 "with a NEW filename. Existing files are never overwritten." +
                 "\n\nRequires external WrathEd/game-toolchain validation " +
@@ -97,12 +98,12 @@ namespace MusafirEx.CncSage.Editor
                     W3xPhase3CAnimationExportCore.BuildDocument(
                         source, decoded, original, edited, provenance,
                         out report);
-                if (report.ChangedChannels == 0)
+                if (report.ChangedChannels == 0 && report.AddedChannels == 0)
                 {
                     EditorUtility.DisplayDialog("C&C SAGE Phase 3C",
-                        "No changed source frame values were detected.\n" +
-                        "No W3X export was created.\n\n" +
-                        "Changes only to curve tangents or subframes " +
+                        "No changed or new SAGE channel frame values " +
+                        "were detected. No W3X export was created.\n\n" +
+                        "Changes only to tangents or unkeyed subframes " +
                         "cannot be represented by this exporter.", "OK");
                     return;
                 }
