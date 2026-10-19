@@ -169,6 +169,29 @@ namespace MusafirEx.CncSage.Editor
                     "X-only animation must include the X rest offset.");
 
 
+                // Some real W3X channels explicitly key zero offsets on
+                // pivots that should otherwise stay at the authored rest
+                // position. These must not create position curves.
+                var zeroOnly = XDocument.Parse(
+                    "<W3DAnimation id='ZERO_ONLY' Hierarchy='TEST_RIG' " +
+                    "NumFrames='2' FrameRate='30'><Channels>" +
+                    "<ChannelScalar Pivot='0' Type='ZTranslation' " +
+                    "FirstFrame='0'><Frame>0</Frame><Frame>0</Frame>" +
+                    "</ChannelScalar></Channels></W3DAnimation>");
+                var zeroData = W3xAnimationReader.Read(
+                    zeroOnly.Root, warnings);
+                var zeroDoc = new W3xDocument();
+                zeroDoc.Animations.Add(zeroData);
+                int zeroCount = W3xAnimationClipBuilder.Build(
+                    zeroDoc, root, hierarchy,
+                    new[] { node.transform }, (name, clip) =>
+                    {
+                        imported.Add(clip);
+                    });
+                Assert(zeroCount == 0 && imported.Count == 3,
+                    "Zero-only source rest-offset must not create " +
+                    "unnecessary position curves or empty clips.");
+
                 // Safety: must not create clips for a mismatched hierarchy.
                 int missing = W3xAnimationClipBuilder.Build(data, root,
                     new W3xHierarchyData { Identifier = "WRONG" },
@@ -218,7 +241,7 @@ namespace MusafirEx.CncSage.Editor
 
                 Debug.Log("[C&C SAGE Phase 3A] Animation import self-test PASS: " +
                     "scalar channels, quaternion, frame rate, rest pose, " +
-                    "Y/Z conversion, sparse-axis and rotation-only clips, " +
+                    "Y/Z conversion, sparse-axis, zero-only and rotation-only clips, " +
                     "pivot paths, " +
                     "root binding verification, missing rig, " +
                     "_SKL companion resolution and warnings.");
