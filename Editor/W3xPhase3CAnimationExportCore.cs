@@ -197,7 +197,9 @@ namespace MusafirEx.CncSage.Editor
                 supported, baseBindings);
             var editBindings = GetBindings(edited);
             var additions = ClassifyNewChannels(
-                editBindings, allowed, pivotPaths, rawKeys, originalRaw);
+                editBindings, baseBindings, sourceAnimation.NumFrames,
+                sourceAnimation.FrameRate, allowed, pivotPaths,
+                rawKeys, originalRaw);
             foreach (var binding in baseBindings.Keys)
                 if (!editBindings.ContainsKey(binding))
                     throw new InvalidDataException(
@@ -394,6 +396,8 @@ namespace MusafirEx.CncSage.Editor
         /// </summary>
         private static List<NewChannel> ClassifyNewChannels(
             Dictionary<string, AnimationCurve> curves,
+            Dictionary<string, AnimationCurve> baseline,
+            int numFrames, float frameRate,
             HashSet<string> existing,
             Dictionary<string, int> pivotPaths,
             HashSet<string> originalKinds, XElement[] rawXml)
@@ -463,6 +467,23 @@ namespace MusafirEx.CncSage.Editor
                         ". Only local position X/Y/Z and complete " +
                         "quaternion/Euler rotation are supported.");
 
+                // A source W3X may animate just one translation axis.
+                // Unity can then generate implicit sibling-position
+                // curves that appear in BOTH the imported baseline and
+                // its Phase 3B clone. Without this guard such unedited
+                // Unity tracks become bogus NEW W3X Z/Y/XTranslation
+                // channels (e.g. BODY.ZTranslation in synthetic tests).
+                // Only skip if a supported track is present at the
+                // identical path in the recorded baseline AND its
+                // sampled values have not changed. A genuinely edited
+                // previously implicit track must still be exported.
+                AnimationCurve importedCurve;
+                if (kind != "Quaternion" &&
+                    baseline.TryGetValue(signature, out importedCurve) &&
+                    SameSampledCurve(curves[signature], importedCurve,
+                        numFrames, frameRate))
+                    continue;
+
                 string key = pivot.ToString(CultureInfo.InvariantCulture) +
                     ":" + kind;
                 if (originalKinds.Contains(key) ||
@@ -488,9 +509,14 @@ namespace MusafirEx.CncSage.Editor
                         parts[0] + ". Keep only one rotation representation.");
                 group.Properties.Add(prop);
             }
+            // Stable W3X layout: translations in X/Y/Z order,
+            // followed by Orientation for each pivot. This also keeps
+            // the numeric/frame inspection order intuitive.
             var result = additions.Values
                 .OrderBy(a => a.Pivot)
-                .ThenBy(a => a.Kind, StringComparer.Ordinal)
+                .ThenBy(a => a.Kind == "XTranslation" ? 0 :
+                    a.Kind == "YTranslation" ? 1 :
+                    a.Kind == "ZTranslation" ? 2 : 3)
                 .ToList();
             foreach (var group in result)
             {

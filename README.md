@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.7.1 Phase 3D preview: preserve all unchanged source animation channels by comparing against the Phase 3B baseline.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **existing-channel editing and new-track export on source pivots** is now available as a Phase 3C preview, while animation roundtrip/game-toolchain validation, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet completed**.
+**Status: 0.7.2 Phase 3D preview: suppress unchanged implicit Unity position channels during new SAGE channel detection.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **existing-channel editing and new-track export on source pivots** is now available as a Phase 3C preview, while animation roundtrip/game-toolchain validation, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet completed**.
 
 ## Install in Unity
 
@@ -998,6 +998,59 @@ Phase 3D self-tests, and verify both report **PASS** in Unity's
 Console. Repeat the Phase 3D validation menu on the original Phase 3B
 editable clip + Phase 3C exported W3X. Do not assume that this
 source-level patch passed runtime tests until the Console confirms it.
+
+### Phase 3D v0.7.2 — prevent implicit Unity axes from generating W3X channels
+
+The RTS Unity Editor installed v0.7.1 (Git SHA \`325345bca1\`),
+compiled successfully, and both Phase 3C and Phase 3D synthetic
+self-tests were executed. Those tests reported:
+
+- Phase 3C: \`Unedited clip altered W3X XML. Existing edits=0,
+  changed frames=0, added channels=1\`
+- Phase 3D: \`Actual new channels=2, changed channels=1,
+  changed frames=1\`; unexpectedly added \`BODY ZTranslation\`
+  as well as intended \`EYE ZTranslation\`.
+
+**Cause:** the Unity AnimationClip can contain an automatically
+generated sibling \`m_LocalPosition.y\` binding on BODY, even though
+the source W3X has no \`ZTranslation\` for BODY. That binding is
+already present in the **imported Phase 3B baseline**; it is NOT
+evidence that the user authored a new SAGE channel. Earlier
+v0.7.1 logic only compared already-existing W3X channels against
+the baseline; the *new-channel classifier* did not do so.
+
+**Fix:** Before adding a new scalar channel on an existing W3X
+pivot, compare the candidate Unity position curve to the matching
+baseline curve at every **original source frame**. If that exact
+position component exists in the baseline and did not change,
+it must not generate a new W3X channel. An intentional edit of
+that baseline component, or a genuinely new EYE position curve
+not in the baseline, **is still exported**. The input path must
+remain an existing indexed SAGE hierarchy pivot.
+
+The exporter still preserves all original XML nodes, and only
+writes to a newly selected W3X output file. This also sorts
+newly appended scalar X/Y/ZTranslation channels before new
+Quaternion Orientation channels within each pivot to give a
+stable, predictable XML layout.
+
+**Validation after updating to 0.7.2:**
+1. **Tools > C&C SAGE > Run Phase 3C Animation Export Self-Test**:
+   no-op export should create zero changed/new channels, while
+   a deliberately edited implicit BODY curve should create exactly
+   one corresponding new \`ZTranslation\`.
+2. **Tools > C&C SAGE > Run Phase 3D Round-Trip Self-Test**:
+   the fixture should edit BODY.X, append only EYE.ZTranslation,
+   reimport, and pass sampled position/quaternion/XML comparison.
+3. Select the Phase 3B \`AURAZDRO_RUNA_Editable.anim\` and a
+   reimported export W3X, then run
+   **Tools > C&C SAGE > Validate Phase 3D Animation Round Trip**.
+4. Check any real-model \`BODY\`, \`B_TURRET\`, \`EYE\` translation
+   edits against the original SKN. Runtime WrathEd/Kane's Wrath
+   compiler tests remain outside Phase 3D's numerical validator.
+
+This release is **source-reviewed only** until Unity's Console
+actually reports both updated self-tests PASS.
 
 ## Phase 3D v0.7.0 — Full animation round-trip audit (preview)
 
