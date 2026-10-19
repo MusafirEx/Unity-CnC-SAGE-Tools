@@ -244,23 +244,25 @@ namespace MusafirEx.CncSage.Editor
                         PositionProperty(mapping.Kind)) : null;
                 AnimationCurve[] rotation = translated ? null :
                     RotationCurves(editBindings, mapping.Path);
-                if (translated &&
-                    parsed.Scalars.All(x =>
-                        Mathf.Abs(x) <= PositionTolerance))
-                {
-                    // Preserve an original all-zero scalar channel
-                    // unless the user actually CHANGED its corresponding
-                    // Unity curve relative to the Phase 3B baseline.
-                    // Unity can create synthetic sibling position tracks
-                    // when another axis is keyed. Re-exporting those
-                    // unedited tracks would wrongly rewrite all frames.
-                    var baselineScalar = GetCurve(baseBindings,
-                        mapping.Path, PositionProperty(mapping.Kind));
-                    if (SameSampledCurve(scalar, baselineScalar,
-                        sourceAnimation.NumFrames,
-                        sourceAnimation.FrameRate))
-                        continue;
-                }
+                // Critical round-trip rule: update original XML only
+                // when the editable clip differs from the source-import
+                // baseline. This applies to ALL authored channels, not
+                // only all-zero translation tracks: imported resting
+                // positions, sampled quaternions, or Unity-generated
+                // sibling position curves can otherwise cause an
+                // unchanged animation to rewrite source frames.
+                var baselineScalar = translated ? GetCurve(baseBindings,
+                    mapping.Path, PositionProperty(mapping.Kind)) : null;
+                if (translated && SameSampledCurve(scalar,
+                    baselineScalar, sourceAnimation.NumFrames,
+                    sourceAnimation.FrameRate))
+                    continue;
+                if (!translated && SameSampledQuaternion(rotation,
+                    RotationCurves(baseBindings, mapping.Path),
+                    sourceAnimation.NumFrames,
+                    sourceAnimation.FrameRate,
+                    hierarchy.Pivots[mapping.Pivot].Rotation))
+                    continue;
                 if (translated && scalar == null)
                 {
                     if (parsed.Scalars.All(x =>
@@ -848,6 +850,22 @@ namespace MusafirEx.CncSage.Editor
                 if (Mathf.Abs(a.Evaluate(f / fps) -
                     b.Evaluate(f / fps)) > PositionTolerance)
                     return false;
+            return true;
+        }
+
+        private static bool SameSampledQuaternion(
+            AnimationCurve[] a, AnimationCurve[] b,
+            int frames, float fps, Quaternion rest)
+        {
+            if (a == null || b == null)
+                return a == null && b == null;
+            for (int frame = 0; frame < frames; frame++)
+            {
+                float time = frame / fps;
+                if (!Equivalent(EditedSourceQuaternion(a, time, rest),
+                    EditedSourceQuaternion(b, time, rest)))
+                    return false;
+            }
             return true;
         }
 
