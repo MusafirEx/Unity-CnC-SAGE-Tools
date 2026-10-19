@@ -10,10 +10,9 @@ using UnityEngine;
 namespace MusafirEx.CncSage.Editor
 {
     /// <summary>
-    /// Phase 3C preview: patch only SUPPORTED, pre-existing W3X animation
-    /// channels after comparing an edited Phase 3B clip to source W3X.
-    /// Unknown declarations, channels, FX/materials and source files remain
-    /// untouched. New channel declarations and retargeting are not guessed.
+    /// Phase 3C: patch supported existing W3X channels and append supported
+    /// new translation/quaternion channels ONLY to source-defined pivots.
+    /// Unknown XML declarations, formats and source files remain untouched.
     /// </summary>
     internal static class W3xPhase3CAnimationExportCore
     {
@@ -26,6 +25,8 @@ namespace MusafirEx.CncSage.Editor
             internal int OriginalChannels;
             internal int ChangedChannels;
             internal int ChangedFrames;
+            internal int AddedChannels;
+            internal int AddedFrames;
             internal int UnsupportedPreserved;
             internal string AnimationId;
             internal readonly List<string> Notes = new List<string>();
@@ -36,6 +37,8 @@ namespace MusafirEx.CncSage.Editor
                     "\nOriginal channels: " + OriginalChannels +
                     "\nChanged supported channels: " + ChangedChannels +
                     "\nChanged source frames: " + ChangedFrames +
+                    "\nNew SAGE channels: " + AddedChannels +
+                    "\nNew channel frames: " + AddedFrames +
                     "\nUnsupported channels preserved: " +
                     UnsupportedPreserved +
                     (Notes.Count == 0 ? "" :
@@ -168,24 +171,33 @@ namespace MusafirEx.CncSage.Editor
                 });
             }
 
-            // No new/unrecognized Transform/property bindings or deleted
-            // importable tracks: these edits cannot be represented as
-            // changes to existing W3X source channels.
+            // Existing source channels are editable. New Unity curves
+            // can be exported ONLY when they map unambiguously to an
+            // existing indexed SAGE pivot and a supported channel kind.
+            // Build this map strictly from the W3X companion hierarchy,
+            // not the current arbitrary Unity Transform names.
             var allowed = new HashSet<string>(
                 supported.SelectMany(ChannelProperties),
                 StringComparer.Ordinal);
+            var pivotPaths = new Dictionary<string, int>(
+                StringComparer.Ordinal);
+            for (int i = 0; i < hierarchy.Pivots.Count; i++)
+            {
+                string path = PivotPath(hierarchy, i);
+                if (pivotPaths.ContainsKey(path))
+                    throw new InvalidDataException(
+                        "W3X hierarchy contains duplicate pivot paths: " +
+                        path);
+                pivotPaths.Add(path, i);
+            }
             var baseBindings = GetBindings(importedBaseline);
             // Fail rather than exporting based on an importer interpretation
             // that no longer reproduces the declared source frames.
             VerifyImportedBaseline(sourceAnimation, hierarchy,
                 supported, baseBindings);
             var editBindings = GetBindings(edited);
-            foreach (var binding in editBindings.Keys)
-                if (!allowed.Contains(binding))
-                    throw new InvalidDataException(
-                        "New or unsupported Unity animation curve '" +
-                        binding.Replace('\n', ' ') +
-                        "'. Phase 3C only edits existing W3X channels.");
+            var additions = ClassifyNewChannels(
+                editBindings, allowed, pivotPaths, rawKeys, originalRaw);
             foreach (var binding in baseBindings.Keys)
                 if (!editBindings.ContainsKey(binding))
                     throw new InvalidDataException(
@@ -201,8 +213,9 @@ namespace MusafirEx.CncSage.Editor
                     "Source clip curve bindings changed since Phase 3B " +
                     "workspace creation; rebuild the workspace first.");
 
-            // Reconstruct output independently. Use source channel key
-            // positions (FirstFrame/count) without inventing XML nodes.
+            // Reconstruct output independently. Existing source nodes
+            // retain their original FirstFrame/count and unknown content;
+            // only validated new channels are appended after them.
             var output = new XDocument(sourceXml);
             var clonedAnimation = output.Root.Elements()
                 .Single(e => e.Name.LocalName == "W3DAnimation" &&
@@ -339,6 +352,8 @@ namespace MusafirEx.CncSage.Editor
                         " " + mapping.Kind + " (" + mapping.Path + ")");
                 }
             }
+            AppendNewChannels(clonedAnimation, hierarchy,
+                sourceAnimation, editBindings, additions, report);
             report.Notes.Add("All unsupported XML channels were preserved.");
             report.Notes.Add("Edited keys are sampled at original W3X FPS; " +
                 "Unity tangents are not exported.");
