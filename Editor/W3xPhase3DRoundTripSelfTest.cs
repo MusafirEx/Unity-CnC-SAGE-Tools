@@ -147,7 +147,11 @@ namespace MusafirEx.CncSage.Editor
                        exportReport.ChangedChannels == 1,
                     "Expected exactly one new EYE channel and one " +
                     "modified existing BODY XTranslation channel; " +
-                    "zero-only YTranslation must stay unchanged.");
+                    "zero-only YTranslation must stay unchanged. " +
+                    "Actual new channels=" + exportReport.AddedChannels +
+                    ", changed channels=" + exportReport.ChangedChannels +
+                    ", changed frames=" + exportReport.ChangedFrames +
+                    ". Details:\n" + exportReport.Describe());
 
                 var roundtripNode = exported.Root.Elements()
                     .Single(x => x.Name.LocalName == "W3DAnimation");
