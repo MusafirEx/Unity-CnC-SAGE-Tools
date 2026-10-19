@@ -277,10 +277,12 @@ namespace MusafirEx.CncSage.Editor
                         }
                         if (frame >= parsed.FirstFrame + parsed.Scalars.Length &&
                             Mathf.Abs(updatedValue -
-                                scalar.Evaluate((parsed.FirstFrame +
+                                (scalar.Evaluate((parsed.FirstFrame +
                                     parsed.Scalars.Length - 1) /
-                                    sourceAnimation.FrameRate) +
-                                0f) > PositionTolerance)
+                                    sourceAnimation.FrameRate) -
+                                    RestValue(hierarchy.Pivots[
+                                        mapping.Pivot], mapping.Kind))) >
+                                PositionTolerance)
                             throw new InvalidDataException(
                                 "Edited values after the final W3X channel " +
                                 "frame cannot be represented.");
