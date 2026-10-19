@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.7.0 Phase 3D preview: read-only AnimationClip ↔ reimported W3X frame/structure validation and zero-only-channel regression.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **existing-channel editing and new-track export on source pivots** is now available as a Phase 3C preview, while animation roundtrip/game-toolchain validation, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet completed**.
+**Status: 0.7.1 Phase 3D preview: preserve all unchanged source animation channels by comparing against the Phase 3B baseline.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **existing-channel editing and new-track export on source pivots** is now available as a Phase 3C preview, while animation roundtrip/game-toolchain validation, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet completed**.
 
 ## Install in Unity
 
@@ -967,6 +967,37 @@ edited-animation roundtrip and WrathEd/game toolchain checks are
 needed before treating Phase 3C as complete. Full animation
 roundtrip verification is the separate Phase 3D.
 
+
+### Phase 3D v0.7.1 — no-op export and source-channel preservation
+
+Unity testing of v0.7.0 found that the Phase 3B self-test **passed**
+and the real RazorDrones W3X export completed, but two regression
+self-tests remained red:
+
+- Phase 3C: `Unedited clip altered W3X XML`
+- Phase 3D: `Expected exactly one new EYE channel and one modified
+  existing BODY XTranslation channel`
+
+This update makes the exporter compare **every original scalar channel
+and quaternion rotation track** against its Phase 3B imported baseline
+at original frame timestamps, **before deciding to patch existing
+source XML**. If the edited clip samples identically to its baseline,
+it preserves the source XML frames exactly, even if Unity synthesizes
+component curves, alters resting Transform defaults or normalizes
+quaternion values during import/serialization. If the user actually
+changes supported channel frame values, the original Phase 3C update
+logic continues to write the intended changed values.
+
+This generalizes the zero-only YTranslation guard from v0.7.0 and
+preserves the existing EYE `ZTranslation` new-channel support.
+The regression tests additionally print actual changed/new frame
+counts when their no-op assertions fail.
+
+**Acceptance:** Refresh Git UPM to v0.7.1, run the Phase 3C and
+Phase 3D self-tests, and verify both report **PASS** in Unity's
+Console. Repeat the Phase 3D validation menu on the original Phase 3B
+editable clip + Phase 3C exported W3X. Do not assume that this
+source-level patch passed runtime tests until the Console confirms it.
 
 ## Phase 3D v0.7.0 — Full animation round-trip audit (preview)
 
