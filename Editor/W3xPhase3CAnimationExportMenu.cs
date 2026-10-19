@@ -123,6 +123,27 @@ namespace MusafirEx.CncSage.Editor
                         throw new InvalidDataException(
                             "Staged W3X was not reproduced exactly after " +
                             "serialization. Export aborted.");
+                    // The actual importer must be able to decode every
+                    // added channel before the new file is committed.
+                    var stagedAnimation = parsedBack.Root.Elements()
+                        .Single(e => e.Name.LocalName == "W3DAnimation" &&
+                            string.Equals((string)e.Attribute("id"),
+                                provenance.OriginalAnimationId,
+                                StringComparison.OrdinalIgnoreCase));
+                    var warnings = new System.Collections.Generic.List<string>();
+                    var parsedAnimation = W3xAnimationReader.Read(
+                        stagedAnimation, warnings);
+                    var originalAnimation = decoded.Animations
+                        .Single(a => string.Equals(a.Identifier,
+                            provenance.OriginalAnimationId,
+                            StringComparison.OrdinalIgnoreCase));
+                    if (parsedAnimation == null ||
+                        parsedAnimation.Channels.Count !=
+                            originalAnimation.Channels.Count +
+                            report.AddedChannels)
+                        throw new InvalidDataException(
+                            "Staged W3X contains animation channels that " +
+                            "the Phase 3A reader cannot decode correctly.");
                     stagedValidated = true;
                     // File.Move never replaces existing files on the
                     // supported .NET/Unity deployment.
