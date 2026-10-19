@@ -509,9 +509,14 @@ namespace MusafirEx.CncSage.Editor
                         parts[0] + ". Keep only one rotation representation.");
                 group.Properties.Add(prop);
             }
+            // Stable W3X layout: translations in X/Y/Z order,
+            // followed by Orientation for each pivot. This also keeps
+            // the numeric/frame inspection order intuitive.
             var result = additions.Values
                 .OrderBy(a => a.Pivot)
-                .ThenBy(a => a.Kind, StringComparer.Ordinal)
+                .ThenBy(a => a.Kind == "XTranslation" ? 0 :
+                    a.Kind == "YTranslation" ? 1 :
+                    a.Kind == "ZTranslation" ? 2 : 3)
                 .ToList();
             foreach (var group in result)
             {
