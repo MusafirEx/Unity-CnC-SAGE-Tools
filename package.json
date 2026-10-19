@@ -1,6 +1,6 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "displayName": "C&C SAGE Model Tools",
   "description": "Experimental Phase 3C export with discoverable Tools menu, source validation and safe new W3X animation XML copies.",
   "unity": "2022.3",

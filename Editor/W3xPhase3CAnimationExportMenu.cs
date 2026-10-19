@@ -205,12 +205,15 @@ namespace MusafirEx.CncSage.Editor
                 reason = "The Phase 3B animation workspace folder is missing.";
                 return false;
             }
+            // C# forbids capturing an out parameter in a LINQ lambda
+            // (CS1628). Copy it to an ordinary local first.
+            AnimationClip selectedClip = edited;
             var matches = Directory.GetFiles(folder)
                 .Where(p => string.Equals(Path.GetExtension(p), ".asset",
                     StringComparison.OrdinalIgnoreCase))
                 .Select(p => AssetDatabase.LoadAssetAtPath<
                     W3xEditableAnimationSource>(p.Replace('\\', '/')))
-                .Where(p => p != null && p.EditableClip == edited)
+                .Where(p => p != null && p.EditableClip == selectedClip)
                 .ToArray();
             if (matches.Length != 1 ||
                 metadata != null && metadata != matches[0])

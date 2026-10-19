@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.6.1 Phase 3C preview: always-visible animation export command with clear asset selection instructions.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **limited existing-channel animation export** is now available as a Phase 3C preview, while animation roundtrip/game-toolchain validation, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet completed**.
+**Status: 0.6.2 Phase 3C preview: Export Animation menu visible; Unity CS1628 editor compilation fix.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **limited existing-channel animation export** is now available as a Phase 3C preview, while animation roundtrip/game-toolchain validation, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet completed**.
 
 ## Install in Unity
 
@@ -790,6 +790,18 @@ The test creates an in-memory model and clip to check:
   compilation plus a real-model preview test** before Phase 3B is
   considered complete.
 
+
+### Unity 2022.3 compiler error CS1628 (fixed in v0.6.2)
+
+If Unity shows `W3xPhase3CAnimationExportMenu.cs(213,60): error CS1628`,
+the Git package revision contains a LINQ lambda referring to the
+`out AnimationClip edited` parameter. Version **0.6.2** captures a
+normal local `selectedClip` instead, preserving selection validation.
+
+After refreshing the package from Git `main`, confirm Unity's
+Console compilation completes without CS1628. Then use
+**Tools > C&C SAGE > Export Animation to W3X...**. Existing original
+W3X files and Phase 3B independent .anim clips are unaffected.
 
 ### Unity menu is missing?
 
