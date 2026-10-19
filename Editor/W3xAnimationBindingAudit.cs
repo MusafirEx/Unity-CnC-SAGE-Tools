@@ -137,7 +137,11 @@ namespace MusafirEx.CncSage.Editor
                             "SAGE_Pivots holder. Verify this is intended.");
 
                     string sourceRootName, sourceRootPath, rawChannelSummary;
-                    DescribeOriginalPivotZero(clipSource, clip.name,
+                    string originalSourcePath, originalAnimationId;
+                    ResolveOriginalW3x(clip,
+                        out originalSourcePath, out originalAnimationId);
+                    DescribeOriginalPivotZero(
+                        originalSourcePath, originalAnimationId,
                         out sourceRootName, out sourceRootPath,
                         out rawChannelSummary);
                     log.AppendLine("  XML pivot0=" + sourceRootName +
@@ -145,7 +149,8 @@ namespace MusafirEx.CncSage.Editor
                         " | " + rawChannelSummary);
                     // Report whether BODY/B_TURRET received genuine source
                     // translation channels or synthesized position curves.
-                    DescribeFocusPivotMotion(clip, bindings, log);
+                    DescribeFocusPivotMotion(clip, bindings, log,
+                        originalSourcePath, originalAnimationId);
 
                     int sourceRootCurves = bindings.Count(b =>
                         b.type == typeof(Transform) &&
@@ -221,10 +226,10 @@ namespace MusafirEx.CncSage.Editor
         }
 
         private static void DescribeFocusPivotMotion(AnimationClip clip,
-            EditorCurveBinding[] bindings, StringBuilder log)
+            EditorCurveBinding[] bindings, StringBuilder log,
+            string sourcePath, string sourceAnimationId)
         {
             var selectedPath = AssetDatabase.GetAssetPath(clip);
-            string sourcePath = ResolveOriginalW3x(selectedPath);
             if (string.IsNullOrEmpty(sourcePath))
             {
                 log.AppendLine("  Source axes unavailable: select the " +
@@ -248,11 +253,11 @@ namespace MusafirEx.CncSage.Editor
                     original.Root.Elements().FirstOrDefault(e =>
                         e.Name.LocalName == "W3DAnimation" &&
                         string.Equals((string)e.Attribute("id"),
-                            clip.name, StringComparison.OrdinalIgnoreCase));
+                            sourceAnimationId, StringComparison.OrdinalIgnoreCase));
                 if (node == null)
                 {
                     log.AppendLine("  Source axes: no matching animation " +
-                        clip.name + " in " + sourcePath);
+                        sourceAnimationId + " in " + sourcePath);
                     return;
                 }
 
@@ -380,23 +385,60 @@ namespace MusafirEx.CncSage.Editor
             }
         }
 
-        private static string ResolveOriginalW3x(string selectedPath)
+        private static void ResolveOriginalW3x(AnimationClip clip,
+            out string sourcePath, out string originalAnimationId)
         {
+            sourcePath = null;
+            originalAnimationId = clip == null ? "" : clip.name;
+            if (clip == null)
+                return;
+            string selectedPath = AssetDatabase.GetAssetPath(clip);
             if (string.IsNullOrWhiteSpace(selectedPath))
-                return null;
+                return;
             if (string.Equals(Path.GetExtension(selectedPath), ".w3x",
                 StringComparison.OrdinalIgnoreCase))
-                return selectedPath;
+            {
+                sourcePath = selectedPath;
+                return;
+            }
             if (!string.Equals(Path.GetExtension(selectedPath), ".anim",
                 StringComparison.OrdinalIgnoreCase))
-                return null;
+                return;
 
-            // A separately extracted .anim does not share importer links
-            // with W3X. Resolve it only when an unambiguous same-name
-            // source is in the SAME folder, never elsewhere in project.
             string folder = Path.GetDirectoryName(selectedPath);
             if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
-                return null;
+                return;
+
+            // Phase 3B keeps an explicit GUID-based source asset link
+            // alongside each independent .anim. This remains valid
+            // after either the source W3X or editor workspace is moved.
+            foreach (string file in Directory.GetFiles(folder))
+            {
+                if (!string.Equals(Path.GetExtension(file), ".asset",
+                    StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var metadata = AssetDatabase.LoadAssetAtPath<
+                    W3xEditableAnimationSource>(file.Replace('\\', '/'));
+                if (metadata == null || metadata.EditableClip != clip ||
+                    string.IsNullOrEmpty(metadata.SourceW3xGuid))
+                    continue;
+                string resolved = AssetDatabase.GUIDToAssetPath(
+                    metadata.SourceW3xGuid);
+                if (!string.IsNullOrEmpty(resolved) &&
+                    string.Equals(Path.GetExtension(resolved), ".w3x",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(AssetDatabase.AssetPathToGUID(resolved),
+                        metadata.SourceW3xGuid,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    sourcePath = resolved;
+                    originalAnimationId = metadata.OriginalAnimationId;
+                }
+                return;
+            }
+
+            // Backward compatibility for older hand-extracted .anim
+            // files. Only trust one same-named sibling .w3x file.
             string stem = Path.GetFileNameWithoutExtension(selectedPath);
             var matches = Directory.GetFiles(folder)
                 .Where(p => string.Equals(Path.GetExtension(p), ".w3x",
@@ -404,7 +446,8 @@ namespace MusafirEx.CncSage.Editor
                     string.Equals(Path.GetFileNameWithoutExtension(p),
                         stem, StringComparison.OrdinalIgnoreCase))
                 .Take(2).ToArray();
-            return matches.Length == 1 ? matches[0] : null;
+            if (matches.Length == 1)
+                sourcePath = matches[0];
         }
 
         private static bool SourceHasAxis(
