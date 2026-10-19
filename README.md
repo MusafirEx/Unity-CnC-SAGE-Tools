@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.6.2 Phase 3C preview: Export Animation menu visible; Unity CS1628 editor compilation fix.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **limited existing-channel animation export** is now available as a Phase 3C preview, while animation roundtrip/game-toolchain validation, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet completed**.
+**Status: 0.6.3 Phase 3C preview: add new position and Orientation channels for existing SAGE pivots.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **existing-channel editing and new-track export on source pivots** is now available as a Phase 3C preview, while animation roundtrip/game-toolchain validation, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet completed**.
 
 ## Install in Unity
 
@@ -822,7 +822,7 @@ the Git dependency from `main`, and verify the Editor folder contains
 Unity may retain an older Git revision in its UPM lock/cache until the
 dependency is refreshed. Do not edit files directly in `Library/PackageCache`.
 
-## Phase 3C: Export edited AnimationClip to W3X (v0.6.0 preview)
+## Phase 3C: Export edited AnimationClip to W3X (v0.6.3 preview)
 
 Phase 3C connects the previous two animation stages:
 
@@ -843,7 +843,7 @@ exports an arbitrary unlinked Unity or FBX animation.
 
 ### Use in Unity 2022.3 LTS
 
-1. Update the Git UPM package to **0.6.0**, let Unity compile, then run
+1. Update the Git UPM package to **0.6.3**, let Unity compile, then run
    **Tools > C&C SAGE > Run Phase 3C Animation Export Self-Test**.
    This validates round-trip conversion, source XML preservation and
    strict export rejections without writing any Unity Project assets.
@@ -857,11 +857,59 @@ exports an arbitrary unlinked Unity or FBX animation.
    unrelated folders (relative ART dependencies must remain valid).
 5. Review the report: number of original/supported/unsupported
    channels, changed channels, and changed keyframes. If no
-   source-frame values changed, no export is written.
+   existing-frame values or new channel values changed, no export is written.
 6. Import the generated W3X file into Unity and compare the resulting
    AnimationClip to the edited Phase 3B \`.anim\`. Only after
    visual verification should it be tested with
    WrathEd/Kane's Wrath tooling.
+
+
+### Phase 3C v0.6.3 — new channels on an existing SAGE pivot
+
+Example from \`AURAZDRO_RUNA_Editable.anim\`: a Unity curve on
+\`SAGE_Pivots/ROOTTRANSFORM/B_TURRET/B_TILT/EYE\` for
+\`m_LocalPosition.y\` previously triggered an error
+\`New or unsupported Unity animation curve\`. This version permits
+it **only if EYE is a real pivot in the original W3X _SKL hierarchy**
+and the source has no conflicting ZTranslation channel.
+
+- New \`m_LocalPosition.x\` → SAGE \`ChannelScalar Type="XTranslation"\`
+- New \`m_LocalPosition.z\` → SAGE \`ChannelScalar Type="YTranslation"\`
+- New \`m_LocalPosition.y\` → SAGE \`ChannelScalar Type="ZTranslation"\`
+- New complete Unity quaternion
+  \`m_LocalRotation.x/y/z/w\` → SAGE
+  \`ChannelQuaternion Type="Orientation"\`
+- New complete Unity \`localEulerAnglesRaw.x/y/z\`
+  (or all three \`localEulerAnglesBaked\` /
+  \`localEulerAngles\` axes) → one SAGE
+  \`ChannelQuaternion Type="Orientation"\`, converted via
+  \`Quaternion.Euler()\` first.
+
+**Channel structure:** new channels use the correct original
+indexed pivot number, \`FirstFrame="0"\` and one sampled
+\`Frame\` per original \`NumFrames\` at the source \`FrameRate\`.
+The source pivot's rest translation and orientation are subtracted.
+An all-zero translation delta or all-identity rotation delta
+is a no-op and **does not** create a redundant new channel.
+
+**Safety:** duplicate or malformed pre-existing channels, pivots
+not in the original hierarchy, missing rotation components,
+mixed quaternion/Euler curves, unsupported events/scale curves,
+out-of-range key times and changes to original FPS/NumFrames
+are rejected. Original source channels and unknown
+\`Visibility\` data remain unchanged. The exporter adds new
+nodes only after all original channel nodes and verifies that
+the Phase 3A reader decodes the staged export before saving.
+
+Use **Tools > C&C SAGE > Run Phase 3C Animation Export Self-Test**
+after upgrading. The regression suite now also verifies a new
+EYE Unity-Y → SAGE-Z scalar channel, a new quaternion
+Orientation channel, Euler conversion, unmodified XML,
+invalid-pivot rejection and no-op channel suppression.
+
+**Limit:** Source-backed *W3X XML* only, not compiled W3D or
+a guaranteed WrathEd/Kane's Wrath-compatible game mod.
+Real-animation import/export playback must still be checked.
 
 ### Supported changes
 
@@ -896,10 +944,15 @@ Export is refused if:
 - The clip contains animation events or object-reference curves,
   duplicate source channels, invalid quaternion data, or edits
   before the source channel's \`FirstFrame\`.
-- New channel declarations, new bone tracks, frame rate conversion,
-  changed frame counts, Euler-only curves and interpolation tangent
-  export are requested. The source W3X must already contain the
-  channel to be edited.
+- New *pivots*, unsupported Transform property types, non-source rig
+  paths, new frame counts/FPS or unsupported time ranges are requested.
+  New translation/quaternion channels on existing source pivots ARE
+  supported. Only complete Euler XYZ tracks (one Unity Euler convention
+  per pivot) can create a new W3X Orientation channel.
+- New rotation tracks with missing quaternion/euler components or
+  mixed quaternion/Euler representations are requested. Existing
+  quaternion W3X channels must retain their imported rotation
+  component curves; deletion/ambiguous conversions are refused.
 
 **Output safety:** The exporter validates serialized XML using a
 staged temporary file and only then moves it to a new destination
@@ -907,7 +960,7 @@ path. It never overwrites original W3X, existing outputs, package
 files, or the Phase 3B editable \`.anim\`; the output is a separate
 uncompiled XML source copy.
 
-**Validation boundary:** v0.6.0 is a first-pass *experimental*
+**Validation boundary:** v0.6.3 is an *experimental*
 implementation. Source review and the in-memory test source have
 been added, but actual Unity compilation, real RazorDrones/Pitbull
 edited-animation roundtrip and WrathEd/game toolchain checks are
