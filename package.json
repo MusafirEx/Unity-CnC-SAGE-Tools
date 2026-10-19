@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Experimental Phase 3B animation-editing workspace: independent AnimationClips, source provenance, preview controller and prefab; no animation W3X export.",
+  "description": "Experimental Phase 3C: validated source-preserving export of edited Phase 3B AnimationClips to new W3X animation XML copies.",
   "unity": "2022.3",
   "keywords": ["command and conquer", "sage", "w3x", "w3d", "modding"],
   "author": {
