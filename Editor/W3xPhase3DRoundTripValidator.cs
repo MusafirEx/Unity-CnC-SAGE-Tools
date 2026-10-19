@@ -296,9 +296,15 @@ namespace MusafirEx.CncSage.Editor
             foreach (string key in editedBindings.Keys.Concat(
                 exportedBindings.Keys).Distinct())
             {
-                string pivotPath = key.Split('\n')[0];
+                var parts = key.Split('\n');
+                string pivotPath = parts.Length > 0 ? parts[0] : "";
                 if (!paths.Contains(pivotPath))
                     result.Issue("Curve is outside original SAGE rig: " +
+                        key.Replace('\n', ' '));
+                else if (parts.Length != 3 ||
+                    parts[1] != typeof(Transform).FullName ||
+                    !SupportedProperty(parts[2]))
+                    result.Issue("Unsupported Unity animation binding: " +
                         key.Replace('\n', ' '));
             }
             return result;
@@ -350,6 +356,38 @@ namespace MusafirEx.CncSage.Editor
             result.AddedChannels = exported.Length - original.Length;
             if (result.AddedChannels < 0)
                 result.Issue("Original W3X channels were removed.");
+            var knownChannels = new HashSet<string>(
+                StringComparer.Ordinal);
+            foreach (var originalChannel in original)
+            {
+                string key = ChannelKey(originalChannel);
+                if (key != null && !knownChannels.Add(key))
+                    result.Issue("Duplicate source animation channel: " +
+                        key);
+            }
+            for (int i = original.Length; i < exported.Length; i++)
+            {
+                var addition = exported[i];
+                int pivot, first;
+                string channel = ChannelKey(addition);
+                if (channel == null ||
+                    !int.TryParse((string)addition.Attribute("Pivot"),
+                        NumberStyles.Integer, CultureInfo.InvariantCulture,
+                        out pivot) ||
+                    !int.TryParse((string)addition.Attribute("FirstFrame"),
+                        NumberStyles.Integer, CultureInfo.InvariantCulture,
+                        out first) || first != 0 ||
+                    addition.Elements().Count(e =>
+                        e.Name.LocalName == "Frame") != result.Frames ||
+                    addition.Elements().Any(e =>
+                        e.Name.LocalName != "Frame"))
+                    result.Issue("Appended W3X channel is not a supported " +
+                        "full-frame scalar/quaternion channel at index " +
+                        i);
+                else if (!knownChannels.Add(channel))
+                    result.Issue("Appended W3X channel is duplicated: " +
+                        channel);
+            }
             for (int i = 0; i < Math.Min(original.Length,
                 exported.Length); i++)
             {
@@ -388,6 +426,27 @@ namespace MusafirEx.CncSage.Editor
                     result.Issue("Original channel metadata altered at " +
                         "index " + i);
             }
+        }
+
+        private static string ChannelKey(XElement element)
+        {
+            if (element == null)
+                return null;
+            string type = (string)element.Attribute("Type") ?? "";
+            string normalized;
+            if (element.Name.LocalName == "ChannelScalar" &&
+                new[] { "XTranslation", "YTranslation", "ZTranslation" }
+                    .Contains(type))
+                normalized = type;
+            else if ((element.Name.LocalName == "ChannelQuaternion" ||
+                element.Name.LocalName == "ChannelQuat") &&
+                new[] { "Orientation", "Quaternion", "Rotation" }
+                    .Contains(type))
+                normalized = "Quaternion";
+            else
+                return null;
+            return ((string)element.Attribute("Pivot") ?? "") +
+                ":" + normalized;
         }
 
         private static Dictionary<string, AnimationCurve> Bindings(
@@ -575,6 +634,28 @@ namespace MusafirEx.CncSage.Editor
         {
             return path + "\n" + typeof(Transform).FullName +
                 "\n" + property;
+        }
+
+        private static bool SupportedProperty(string property)
+        {
+            if (property == "m_LocalPosition.x" ||
+                property == "m_LocalPosition.y" ||
+                property == "m_LocalPosition.z")
+                return true;
+            foreach (string prefix in new[] {
+                "m_LocalRotation.", "localEulerAnglesRaw.",
+                "localEulerAnglesBaked.", "localEulerAngles." })
+            {
+                if (!property.StartsWith(prefix,
+                    StringComparison.Ordinal))
+                    continue;
+                var component = property.Substring(prefix.Length);
+                return component.Length == 1 &&
+                    (prefix == "m_LocalRotation." ?
+                        "xyzw".Contains(component) :
+                        "xyz".Contains(component));
+            }
+            return false;
         }
 
         private static bool Finite(float x)
