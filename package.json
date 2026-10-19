@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Phase 3A W3X animation importer with pivot-0 and editable prefab binding audit; preserves Phase 2 W3X round-trip.",
+  "description": "Phase 3A W3X animation importer with sparse-axis translation and zero-delta suppression for pivot animation, plus BODY/B_TURRET diagnostics.",
   "unity": "2022.3",
   "keywords": ["command and conquer", "sage", "w3x", "w3d", "modding"],
   "author": {

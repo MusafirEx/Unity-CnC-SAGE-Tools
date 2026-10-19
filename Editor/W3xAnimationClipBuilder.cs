@@ -114,25 +114,25 @@ namespace MusafirEx.CncSage.Editor
                 bool hasQ = lookup.TryGetValue("Quaternion", out q);
 
                 var basePivot = hierarchy.Pivots[pivot];
-                if (hasX || hasY || hasZ)
-                {
-                    var cx = new Keyframe[animation.NumFrames];
-                    var cy = new Keyframe[animation.NumFrames];
-                    var cz = new Keyframe[animation.NumFrames];
-                    for (int f = 0; f < animation.NumFrames; f++)
-                    {
-                        Vector3 sage = basePivot.Translation +
-                            new Vector3(Value(x, f), Value(y, f), Value(z, f));
-                        Vector3 unity = new Vector3(sage.x, sage.z, sage.y);
-                        float time = f / animation.FrameRate;
-                        cx[f] = new Keyframe(time, unity.x);
-                        cy[f] = new Keyframe(time, unity.y);
-                        cz[f] = new Keyframe(time, unity.z);
-                    }
-                    Set(clip, path, "m_LocalPosition.x", cx);
-                    Set(clip, path, "m_LocalPosition.y", cy);
-                    Set(clip, path, "m_LocalPosition.z", cz);
-                }
+                // A W3X scalar translation channel owns exactly ONE axis.
+                // Never manufacture other position curves, even constants:
+                // those tracks can override a pivot's authored rest pose
+                // (notably BODY/B_TURRET) during Unity animation blending.
+                // Source X -> Unity X; source Y -> Unity Z;
+                // source Z -> Unity Y, consistent with mesh/pivot import.
+                bool wrotePosition = false;
+                if (hasX)
+                    wrotePosition |= SetPosition(clip, path,
+                        "m_LocalPosition.x", x, basePivot.Translation.x,
+                        animation.NumFrames, animation.FrameRate);
+                if (hasY)
+                    wrotePosition |= SetPosition(clip, path,
+                        "m_LocalPosition.z", y, basePivot.Translation.y,
+                        animation.NumFrames, animation.FrameRate);
+                if (hasZ)
+                    wrotePosition |= SetPosition(clip, path,
+                        "m_LocalPosition.y", z, basePivot.Translation.z,
+                        animation.NumFrames, animation.FrameRate);
                 if (hasQ)
                 {
                     var rx = new Keyframe[animation.NumFrames];
@@ -161,10 +161,34 @@ namespace MusafirEx.CncSage.Editor
                     Set(clip, path, "m_LocalRotation.z", rz);
                     Set(clip, path, "m_LocalRotation.w", rw);
                 }
-                if (hasX || hasY || hasZ || hasQ)
+                if (wrotePosition || hasQ)
                     bindings++;
             }
             return bindings;
+        }
+
+        private static bool SetPosition(AnimationClip clip,
+            string path, string property, W3xAnimationChannel channel,
+            float restPosition, int numFrames, float fps)
+        {
+            if (channel == null)
+                return false;
+
+            // Some W3X files include explicit all-zero translation
+            // channels for otherwise rotation-only pivots. Since values
+            // are source rest-pose deltas, a zero-only track creates no
+            // movement. Omitting it avoids overriding a target prefab's
+            // rest position (e.g. BODY or B_TURRET).
+            if (channel.Scalars != null &&
+                channel.Scalars.All(v => Mathf.Abs(v) <= 0.000001f))
+                return false;
+
+            var keys = new Keyframe[numFrames];
+            for (int frame = 0; frame < numFrames; frame++)
+                keys[frame] = new Keyframe(frame / fps,
+                    restPosition + Value(channel, frame));
+            Set(clip, path, property, keys);
+            return true;
         }
 
         private static float Value(W3xAnimationChannel channel, int frame)

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Xml;
@@ -142,6 +143,9 @@ namespace MusafirEx.CncSage.Editor
                     log.AppendLine("  XML pivot0=" + sourceRootName +
                         " | importedPath=" + sourceRootPath +
                         " | " + rawChannelSummary);
+                    // Report whether BODY/B_TURRET received genuine source
+                    // translation channels or synthesized position curves.
+                    DescribeFocusPivotMotion(clip, bindings, log);
 
                     int sourceRootCurves = bindings.Count(b =>
                         b.type == typeof(Transform) &&
@@ -214,6 +218,209 @@ namespace MusafirEx.CncSage.Editor
         {
             return root != null &&
                 (string.IsNullOrEmpty(path) || root.Find(path) != null);
+        }
+
+        private static void DescribeFocusPivotMotion(AnimationClip clip,
+            EditorCurveBinding[] bindings, StringBuilder log)
+        {
+            var selectedPath = AssetDatabase.GetAssetPath(clip);
+            string sourcePath = ResolveOriginalW3x(selectedPath);
+            if (string.IsNullOrEmpty(sourcePath))
+            {
+                log.AppendLine("  Source axes unavailable: select the " +
+                    "original W3X sub-asset or keep a same-named W3X " +
+                    "beside any extracted .anim copy.");
+                return;
+            }
+
+            try
+            {
+                XDocument original;
+                var settings = new XmlReaderSettings
+                {
+                    DtdProcessing = DtdProcessing.Prohibit,
+                    XmlResolver = null
+                };
+                using (var reader = XmlReader.Create(sourcePath, settings))
+                    original = XDocument.Load(reader);
+
+                var node = original.Root == null ? null :
+                    original.Root.Elements().FirstOrDefault(e =>
+                        e.Name.LocalName == "W3DAnimation" &&
+                        string.Equals((string)e.Attribute("id"),
+                            clip.name, StringComparison.OrdinalIgnoreCase));
+                if (node == null)
+                {
+                    log.AppendLine("  Source axes: no matching animation " +
+                        clip.name + " in " + sourcePath);
+                    return;
+                }
+
+                var doc = W3xReader.Read(sourcePath);
+                var hierarchy = doc.Hierarchies.FirstOrDefault(h =>
+                    string.Equals(h.Identifier,
+                        (string)node.Attribute("Hierarchy"),
+                        StringComparison.OrdinalIgnoreCase));
+                if (hierarchy == null)
+                {
+                    log.AppendLine("  Source axes: matching hierarchy " +
+                        "is unavailable.");
+                    return;
+                }
+                var channelsRoot = node.Elements().FirstOrDefault(e =>
+                    e.Name.LocalName == "Channels");
+                var sourceChannels = channelsRoot == null ?
+                    new XElement[0] : channelsRoot.Elements().ToArray();
+
+                if (!string.Equals(sourcePath, selectedPath,
+                    StringComparison.OrdinalIgnoreCase))
+                    log.AppendLine("  NOTE: Selected .anim is an " +
+                        "independent clip copy; reimporting W3X will NOT " +
+                        "update this .anim automatically. XML comparison " +
+                        "uses sibling source " + sourcePath);
+
+                foreach (var item in hierarchy.Pivots
+                    .Select((pivot, index) => new { pivot, index })
+                    .Where(x =>
+                        string.Equals(x.pivot.Name, "BODY",
+                            StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(x.pivot.Name, "B_TURRET",
+                            StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(x.pivot.Name, "ROOTTRANSFORM",
+                            StringComparison.OrdinalIgnoreCase))
+                    .Take(8))
+                {
+                    var parts = new List<string>();
+                    var seen = new HashSet<int>();
+                    int pivotIndex = item.index;
+                    while (pivotIndex >= 0 &&
+                        pivotIndex < hierarchy.Pivots.Count &&
+                        seen.Add(pivotIndex))
+                    {
+                        var p = hierarchy.Pivots[pivotIndex];
+                        parts.Add(p.Name);
+                        pivotIndex = p.Parent;
+                    }
+                    parts.Reverse();
+                    string path = "SAGE_Pivots/" +
+                        string.Join("/", parts.ToArray());
+
+                    string indexString = item.index.ToString();
+                    var source = sourceChannels.Where(c =>
+                        (string)c.Attribute("Pivot") == indexString).ToArray();
+                    bool sx = SourceHasAxis(source, "XTranslation");
+                    bool sy = SourceHasAxis(source, "YTranslation");
+                    bool sz = SourceHasAxis(source, "ZTranslation");
+                    bool cx = HasCurve(bindings, path, "m_LocalPosition.x");
+                    bool cy = HasCurve(bindings, path, "m_LocalPosition.y");
+                    bool cz = HasCurve(bindings, path, "m_LocalPosition.z");
+                    bool rotation = bindings.Any(b =>
+                        b.type == typeof(Transform) &&
+                        b.path == path &&
+                        b.propertyName.StartsWith("m_LocalRotation.",
+                            StringComparison.Ordinal));
+
+                    log.AppendLine("  FOCUS " + item.pivot.Name +
+                        " pivot=" + item.index +
+                        " | XML source translation X=" + sx +
+                        " Y=" + sy + " Z=" + sz +
+                        " (" + source.Length + " total channel nodes)" +
+                        " | clip position X=" + cx + " Y=" + cy +
+                        " Z=" + cz + " | clip rotation=" + rotation);
+                    foreach (var sourceAxis in source.Where(c =>
+                        c.Name.LocalName == "ChannelScalar" &&
+                        ((string)c.Attribute("Type") == "XTranslation" ||
+                         (string)c.Attribute("Type") == "YTranslation" ||
+                         (string)c.Attribute("Type") == "ZTranslation")))
+                    {
+                        string type = (string)sourceAxis.Attribute("Type");
+                        var parsedValues = new List<float>();
+                        int total = 0;
+                        foreach (var frame in sourceAxis.Elements().Where(
+                            e => e.Name.LocalName == "Frame"))
+                        {
+                            total++;
+                            float value;
+                            if (float.TryParse(frame.Value,
+                                NumberStyles.Float,
+                                CultureInfo.InvariantCulture, out value))
+                                parsedValues.Add(value);
+                        }
+                        if (parsedValues.Count == 0)
+                        {
+                            log.AppendLine("    SOURCE " + type +
+                                ": no parseable numeric frames");
+                            continue;
+                        }
+                        float minimum = parsedValues.Min();
+                        float maximum = parsedValues.Max();
+                        bool zeroDelta = parsedValues.Count == total &&
+                            parsedValues.All(v => Mathf.Abs(v) <= 0.000001f);
+                        log.AppendLine("    SOURCE " + type +
+                            " frames=" + parsedValues.Count + "/" + total +
+                            " range=[" +
+                            minimum.ToString("G6",
+                                CultureInfo.InvariantCulture) + ", " +
+                            maximum.ToString("G6",
+                                CultureInfo.InvariantCulture) + "]" +
+                            (zeroDelta ? " ZERO-ONLY (rest-pose delta)" : ""));
+                    }
+                    // Unity swaps source Y/Z. An extra curve on an
+                    // absent source axis is importer-generated, not authored.
+                    if (cx && !sx || cy && !sz || cz && !sy)
+                        log.AppendLine("    WARNING: EXTRA POSITION CURVE " +
+                            "not present in W3X for " + item.pivot.Name +
+                            "; update to sparse-axis importer and reimport.");
+                }
+            }
+            catch (Exception e)
+            {
+                log.AppendLine("  Source axes diagnostic unavailable: " +
+                    e.Message);
+            }
+        }
+
+        private static string ResolveOriginalW3x(string selectedPath)
+        {
+            if (string.IsNullOrWhiteSpace(selectedPath))
+                return null;
+            if (string.Equals(Path.GetExtension(selectedPath), ".w3x",
+                StringComparison.OrdinalIgnoreCase))
+                return selectedPath;
+            if (!string.Equals(Path.GetExtension(selectedPath), ".anim",
+                StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            // A separately extracted .anim does not share importer links
+            // with W3X. Resolve it only when an unambiguous same-name
+            // source is in the SAME folder, never elsewhere in project.
+            string folder = Path.GetDirectoryName(selectedPath);
+            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+                return null;
+            string stem = Path.GetFileNameWithoutExtension(selectedPath);
+            var matches = Directory.GetFiles(folder)
+                .Where(p => string.Equals(Path.GetExtension(p), ".w3x",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(Path.GetFileNameWithoutExtension(p),
+                        stem, StringComparison.OrdinalIgnoreCase))
+                .Take(2).ToArray();
+            return matches.Length == 1 ? matches[0] : null;
+        }
+
+        private static bool SourceHasAxis(
+            XElement[] source, string type)
+        {
+            return source.Any(e =>
+                e.Name.LocalName == "ChannelScalar" &&
+                string.Equals((string)e.Attribute("Type"), type,
+                    StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool HasCurve(EditorCurveBinding[] bindings,
+            string path, string property)
+        {
+            return bindings.Any(b => b.type == typeof(Transform) &&
+                b.path == path && b.propertyName == property);
         }
 
         private static void DescribeOriginalPivotZero(
