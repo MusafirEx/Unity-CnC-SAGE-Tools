@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Xml;
@@ -326,15 +327,50 @@ namespace MusafirEx.CncSage.Editor
                         " (" + source.Length + " total channel nodes)" +
                         " | clip position X=" + cx + " Y=" + cy +
                         " Z=" + cz + " | clip rotation=" + rotation);
+                    foreach (var sourceAxis in source.Where(c =>
+                        c.Name.LocalName == "ChannelScalar" &&
+                        ((string)c.Attribute("Type") == "XTranslation" ||
+                         (string)c.Attribute("Type") == "YTranslation" ||
+                         (string)c.Attribute("Type") == "ZTranslation")))
+                    {
+                        string type = (string)sourceAxis.Attribute("Type");
+                        var parsedValues = new List<float>();
+                        int total = 0;
+                        foreach (var frame in sourceAxis.Elements().Where(
+                            e => e.Name.LocalName == "Frame"))
+                        {
+                            total++;
+                            float value;
+                            if (float.TryParse(frame.Value,
+                                NumberStyles.Float,
+                                CultureInfo.InvariantCulture, out value))
+                                parsedValues.Add(value);
+                        }
+                        if (parsedValues.Count == 0)
+                        {
+                            log.AppendLine("    SOURCE " + type +
+                                ": no parseable numeric frames");
+                            continue;
+                        }
+                        float minimum = parsedValues.Min();
+                        float maximum = parsedValues.Max();
+                        bool zeroDelta = parsedValues.Count == total &&
+                            parsedValues.All(v => Mathf.Abs(v) <= 0.000001f);
+                        log.AppendLine("    SOURCE " + type +
+                            " frames=" + parsedValues.Count + "/" + total +
+                            " range=[" +
+                            minimum.ToString("G6",
+                                CultureInfo.InvariantCulture) + ", " +
+                            maximum.ToString("G6",
+                                CultureInfo.InvariantCulture) + "]" +
+                            (zeroDelta ? " ZERO-ONLY (rest-pose delta)" : ""));
+                    }
                     // Unity swaps source Y/Z. An extra curve on an
                     // absent source axis is importer-generated, not authored.
                     if (cx && !sx || cy && !sz || cz && !sy)
                         log.AppendLine("    WARNING: EXTRA POSITION CURVE " +
                             "not present in W3X for " + item.pivot.Name +
                             "; update to sparse-axis importer and reimport.");
-                    else if (!sx && !sy && !sz && (cx || cy || cz))
-                        log.AppendLine("    WARNING: rotation-only pivot " +
-                            "contains unexpected position curves.");
                 }
             }
             catch (Exception e)
