@@ -15,7 +15,7 @@ namespace MusafirEx.CncSage.Editor
     internal static class W3xPhase3CAnimationExportMenu
     {
         private const string Menu =
-            "Tools/C&C SAGE/Export Phase 3C Edited Animation to W3X...";
+            "Tools/C&C SAGE/Export Animation to W3X...";
 
         [MenuItem(Menu)]
         private static void Run()
@@ -181,8 +181,13 @@ namespace MusafirEx.CncSage.Editor
                 edited = metadata.EditableClip;
             if (edited == null)
             {
-                reason = "Select ONE Phase 3B *_Editable.anim clip or " +
-                    "its *_Source.asset provenance in the Project window.";
+                reason = "In the Unity Project window, select ONE " +
+                    "editable animation asset created by Phase 3B: " +
+                    "<animation>_Editable.anim or the matching " +
+                    "<animation>_Source.asset. Then choose Tools > " +
+                    "C&C SAGE > Export Animation to W3X... again. " +
+                    "Do not select a SAGE_Pivots transform, a model " +
+                    "prefab, or a W3X-imported clip sub-asset.";
                 return false;
             }
 
@@ -238,12 +243,8 @@ namespace MusafirEx.CncSage.Editor
             return true;
         }
 
-        [MenuItem(Menu, true)]
-        private static bool Validate()
-        {
-            var asset = Selection.activeObject;
-            return asset is AnimationClip ||
-                asset is W3xEditableAnimationSource;
-        }
+        // Intentionally no MenuItem validation: keep Export Animation
+        // visible even when a model, prefab or GameObject is selected.
+        // Run() provides a useful selection guide before any file I/O.
     }
 }

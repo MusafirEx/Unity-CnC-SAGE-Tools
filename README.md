@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.6.0 Phase 3C preview: safe source-backed edited AnimationClip → W3X animation copy export.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **limited existing-channel animation export** is now available as a Phase 3C preview, while animation roundtrip/game-toolchain validation, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet completed**.
+**Status: 0.6.1 Phase 3C preview: always-visible animation export command with clear asset selection instructions.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **limited existing-channel animation export** is now available as a Phase 3C preview, while animation roundtrip/game-toolchain validation, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet completed**.
 
 ## Install in Unity
 
@@ -791,6 +791,25 @@ The test creates an in-memory model and clip to check:
   considered complete.
 
 
+### Unity menu is missing?
+
+The Phase 3C command is under **Tools > C&C SAGE > Export Animation to W3X...**.
+Starting with **0.6.1**, this menu always appears, even when a model,
+pivot or no asset is selected. Clicking it without a matching Phase 3B
+`*_Editable.anim` or `*_Source.asset` shows a selection guide and
+does not create files. A model/prefab or an imported W3X clip sub-asset
+is **not** a valid export selection.
+
+If the command is **absent**, the Unity Git UPM package is almost
+certainly still on Phase 3B `0.5.0` or Unity has not finished compiling.
+Use **Window > Package Manager > C&C SAGE Model Tools** and confirm the
+package version. The Git dependency uses
+`https://github.com/MusafirEx/Unity-CnC-SAGE-Tools.git`. Refresh/update
+the Git dependency from `main`, and verify the Editor folder contains
+`W3xPhase3CAnimationExportMenu.cs`. Check Console for compiler errors.
+Unity may retain an older Git revision in its UPM lock/cache until the
+dependency is refreshed. Do not edit files directly in `Library/PackageCache`.
+
 ## Phase 3C: Export edited AnimationClip to W3X (v0.6.0 preview)
 
 Phase 3C connects the previous two animation stages:
@@ -819,7 +838,7 @@ exports an arbitrary unlinked Unity or FBX animation.
 2. In the **Project** window, select a Phase 3B
    \`*_Editable.anim\` asset (or its matching \`*_Source.asset\` file).
    An imported W3X clip sub-asset is **not editable export input**.
-3. Choose **Tools > C&C SAGE > Export Phase 3C Edited Animation to W3X...**
+3. Choose **Tools > C&C SAGE > Export Animation to W3X...**
 4. After reading the warning, choose a **NEW \`.w3x\` filename in the
    SAME directory as the original source animation W3X**. The
    exporter blocks existing paths, the original source path and
