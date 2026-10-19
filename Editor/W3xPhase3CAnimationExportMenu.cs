@@ -53,9 +53,10 @@ namespace MusafirEx.CncSage.Editor
                 "Source: " + sourcePath + "\n" +
                 "Original animation ID: " +
                     provenance.OriginalAnimationId + "\n\n" +
-                "Only changed, EXISTING X/Y/Z translation and quaternion " +
-                "channel frames are supported. Unknown channels, all " +
-                "other declarations, and the original W3X are preserved.\n\n" +
+                "Existing X/Y/Z translation and quaternion channels " +
+                "can be edited. New translation or rotation channels " +
+                "can be added on EXISTING SAGE pivots only. Unknown " +
+                "channels and original W3X XML are preserved.\n\n" +
                 "Output must be in the SAME directory as the source, " +
                 "with a NEW filename. Existing files are never overwritten." +
                 "\n\nRequires external WrathEd/game-toolchain validation " +
@@ -97,12 +98,12 @@ namespace MusafirEx.CncSage.Editor
                     W3xPhase3CAnimationExportCore.BuildDocument(
                         source, decoded, original, edited, provenance,
                         out report);
-                if (report.ChangedChannels == 0)
+                if (report.ChangedChannels == 0 && report.AddedChannels == 0)
                 {
                     EditorUtility.DisplayDialog("C&C SAGE Phase 3C",
-                        "No changed source frame values were detected.\n" +
-                        "No W3X export was created.\n\n" +
-                        "Changes only to curve tangents or subframes " +
+                        "No changed or new SAGE channel frame values " +
+                        "were detected. No W3X export was created.\n\n" +
+                        "Changes only to tangents or unkeyed subframes " +
                         "cannot be represented by this exporter.", "OK");
                     return;
                 }
@@ -122,6 +123,27 @@ namespace MusafirEx.CncSage.Editor
                         throw new InvalidDataException(
                             "Staged W3X was not reproduced exactly after " +
                             "serialization. Export aborted.");
+                    // The actual importer must be able to decode every
+                    // added channel before the new file is committed.
+                    var stagedAnimation = parsedBack.Root.Elements()
+                        .Single(e => e.Name.LocalName == "W3DAnimation" &&
+                            string.Equals((string)e.Attribute("id"),
+                                provenance.OriginalAnimationId,
+                                StringComparison.OrdinalIgnoreCase));
+                    var warnings = new System.Collections.Generic.List<string>();
+                    var parsedAnimation = W3xAnimationReader.Read(
+                        stagedAnimation, warnings);
+                    var originalAnimation = decoded.Animations
+                        .Single(a => string.Equals(a.Identifier,
+                            provenance.OriginalAnimationId,
+                            StringComparison.OrdinalIgnoreCase));
+                    if (parsedAnimation == null ||
+                        parsedAnimation.Channels.Count !=
+                            originalAnimation.Channels.Count +
+                            report.AddedChannels)
+                        throw new InvalidDataException(
+                            "Staged W3X contains animation channels that " +
+                            "the Phase 3A reader cannot decode correctly.");
                     stagedValidated = true;
                     // File.Move never replaces existing files on the
                     // supported .NET/Unity deployment.
