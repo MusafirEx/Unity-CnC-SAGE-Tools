@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.5.0 Phase 3B preview: independent editable W3X AnimationClips, Animator Controller and preview prefab workspace.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **animation export**, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet implemented**.
+**Status: 0.6.0 Phase 3C preview: safe source-backed edited AnimationClip → W3X animation copy export.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **limited existing-channel animation export** is now available as a Phase 3C preview, while animation roundtrip/game-toolchain validation, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet completed**.
 
 ## Install in Unity
 
@@ -789,6 +789,99 @@ The test creates an in-memory model and clip to check:
 - Code is prepared for Unity 2022.3 LTS and requires **live Unity
   compilation plus a real-model preview test** before Phase 3B is
   considered complete.
+
+
+## Phase 3C: Export edited AnimationClip to W3X (v0.6.0 preview)
+
+Phase 3C connects the previous two animation stages:
+
+\`\`\`text
+Original _IDLA/_ATKA.W3X  →  Phase 3A importer  →  AnimationClip
+                                                     ↓
+                                    Phase 3B editable .anim copy
+                                                     ↓
+                                  Phase 3C source-backed exporter
+                                                     ↓
+                               New *_unity_anim.w3x (source preserved)
+\`\`\`
+
+This **does not replace Phase 2 geometry export**. The animation
+exporter requires both the \`_Editable.anim\` file AND its generated
+\`_Source.asset\` provenance from the Phase 3B workspace. It never
+exports an arbitrary unlinked Unity or FBX animation.
+
+### Use in Unity 2022.3 LTS
+
+1. Update the Git UPM package to **0.6.0**, let Unity compile, then run
+   **Tools > C&C SAGE > Run Phase 3C Animation Export Self-Test**.
+   This validates round-trip conversion, source XML preservation and
+   strict export rejections without writing any Unity Project assets.
+2. In the **Project** window, select a Phase 3B
+   \`*_Editable.anim\` asset (or its matching \`*_Source.asset\` file).
+   An imported W3X clip sub-asset is **not editable export input**.
+3. Choose **Tools > C&C SAGE > Export Phase 3C Edited Animation to W3X...**
+4. After reading the warning, choose a **NEW \`.w3x\` filename in the
+   SAME directory as the original source animation W3X**. The
+   exporter blocks existing paths, the original source path and
+   unrelated folders (relative ART dependencies must remain valid).
+5. Review the report: number of original/supported/unsupported
+   channels, changed channels, and changed keyframes. If no
+   source-frame values changed, no export is written.
+6. Import the generated W3X file into Unity and compare the resulting
+   AnimationClip to the edited Phase 3B \`.anim\`. Only after
+   visual verification should it be tested with
+   WrathEd/Kane's Wrath tooling.
+
+### Supported changes
+
+- Edit **existing** \`ChannelScalar Type="XTranslation"\`,
+  \`YTranslation\`, or \`ZTranslation\` keyframes. Each axis is
+  converted back to SAGE space (Unity X→source X, Unity Z→source Y,
+  Unity Y→source Z), subtracting the source pivot's rest position.
+- Edit **existing** \`ChannelQuaternion Type="Orientation"\`
+  (\`Quaternion\` / \`Rotation\` variants supported). The output
+  reconstructs the original hierarchy's local quaternion delta,
+  accounts for the coordinate handedness conversion, normalizes
+  quaternions, and preserves source quaternion hemisphere sign
+  where possible.
+- Keep the original \`W3DAnimation\` \`Hierarchy\`, \`NumFrames\`,
+  \`FrameRate\`, \`Pivot\`, \`FirstFrame\` and frame count.
+- Modify XML values **only for changed supported source frames**.
+  Untouched source frames, unknown channel types (e.g.
+  \`Visibility\`), auxiliary animation metadata, FXShader, models,
+  collisions, comments and other \`AssetDeclaration\` nodes are
+  preserved structurally.
+
+### Fail-closed restrictions
+
+Export is refused if:
+- The \`_Source.asset\` sidecar/source GUID is missing, ambiguous or
+  does not reference the selected Phase 3B clip.
+- The source W3X hierarchy, source animation ID, FPS or original
+  frame count changed; or the newly imported baseline bindings
+  no longer match the Phase 3B source-binding signature.
+- The edited clip adds unsupported bindings or removes an
+  imported nonzero source track.
+- The clip contains animation events or object-reference curves,
+  duplicate source channels, invalid quaternion data, or edits
+  before the source channel's \`FirstFrame\`.
+- New channel declarations, new bone tracks, frame rate conversion,
+  changed frame counts, Euler-only curves and interpolation tangent
+  export are requested. The source W3X must already contain the
+  channel to be edited.
+
+**Output safety:** The exporter validates serialized XML using a
+staged temporary file and only then moves it to a new destination
+path. It never overwrites original W3X, existing outputs, package
+files, or the Phase 3B editable \`.anim\`; the output is a separate
+uncompiled XML source copy.
+
+**Validation boundary:** v0.6.0 is a first-pass *experimental*
+implementation. Source review and the in-memory test source have
+been added, but actual Unity compilation, real RazorDrones/Pitbull
+edited-animation roundtrip and WrathEd/game toolchain checks are
+needed before treating Phase 3C as complete. Full animation
+roundtrip verification is the separate Phase 3D.
 
 ## Roadmap
 
