@@ -131,6 +131,46 @@ namespace MusafirEx.CncSage.Editor
                     ". All sampled source channels must remain unchanged.");
 
                 string path = "SAGE_Pivots/ROOTTRANSFORM/BODY";
+                // A Unity-imported Transform can expose a position
+                // component without any matching source W3X channel.
+                // It must NOT be exported unless its sampled values
+                // genuinely differ from the Phase 3B baseline.
+                var implicitBinding = EditorCurveBinding.FloatCurve(
+                    path, typeof(Transform), "m_LocalPosition.y");
+                var implicitOriginal = AnimationUtility.GetEditorCurve(
+                    imported, implicitBinding);
+                if (implicitOriginal != null)
+                {
+                    var implicitEdited =
+                        AnimationUtility.GetEditorCurve(edited,
+                            implicitBinding);
+                    Assert(implicitEdited != null,
+                        "Clone lost Unity's implicit sibling curve.");
+                    var synthetic = implicitEdited.keys;
+                    synthetic[1].value += .4f;
+                    implicitEdited.keys = synthetic;
+                    AnimationUtility.SetEditorCurve(edited,
+                        implicitBinding, implicitEdited);
+                    W3xPhase3CAnimationExportCore.Report addedImplicit;
+                    var actualEdit =
+                        W3xPhase3CAnimationExportCore.BuildDocument(
+                            original, doc, imported, edited, metadata,
+                            out addedImplicit);
+                    var newChildren = actualEdit.Root.Elements()
+                        .Single(e => e.Name.LocalName == "W3DAnimation")
+                        .Elements().Single(e =>
+                            e.Name.LocalName == "Channels")
+                        .Elements().ToArray();
+                    Assert(addedImplicit.AddedChannels == 1 &&
+                           newChildren.Length == 5 &&
+                           (string)newChildren[4].Attribute("Pivot") == "1" &&
+                           (string)newChildren[4].Attribute("Type") ==
+                               "ZTranslation",
+                        "A GENUINELY edited implicit BODY local-Y " +
+                        "component should create one source ZTranslation.");
+                    AnimationUtility.SetEditorCurve(edited,
+                        implicitBinding, implicitOriginal);
+                }
                 Modify(edited, path, "m_LocalPosition.x", 1, 3.25f);
                 // Rotation is source +Z, Unity -Y. Edit frame 1 to
                 // source +35 degrees around Z (Unity -35 degrees Y).
