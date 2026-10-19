@@ -122,8 +122,13 @@ namespace MusafirEx.CncSage.Editor
                     out noChanges);
                 Assert(noChanges.ChangedChannels == 0 &&
                        noChanges.ChangedFrames == 0 &&
+                       noChanges.AddedChannels == 0 &&
                        XNode.DeepEquals(original, untouched),
-                    "Unedited clip altered W3X XML.");
+                    "Unedited clip altered W3X XML. Existing edits=" +
+                    noChanges.ChangedChannels + ", changed frames=" +
+                    noChanges.ChangedFrames + ", added channels=" +
+                    noChanges.AddedChannels +
+                    ". All sampled source channels must remain unchanged.");
 
                 string path = "SAGE_Pivots/ROOTTRANSFORM/BODY";
                 Modify(edited, path, "m_LocalPosition.x", 1, 3.25f);
