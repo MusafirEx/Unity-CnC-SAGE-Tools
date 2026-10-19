@@ -175,6 +175,10 @@ namespace MusafirEx.CncSage.Editor
                 supported.SelectMany(ChannelProperties),
                 StringComparer.Ordinal);
             var baseBindings = GetBindings(importedBaseline);
+            // Fail rather than exporting based on an importer interpretation
+            // that no longer reproduces the declared source frames.
+            VerifyImportedBaseline(sourceAnimation, hierarchy,
+                supported, baseBindings);
             var editBindings = GetBindings(edited);
             foreach (var binding in editBindings.Keys)
                 if (!allowed.Contains(binding))
@@ -376,6 +380,64 @@ namespace MusafirEx.CncSage.Editor
             return int.TryParse((string)channel.Attribute("Pivot"),
                 NumberStyles.Integer, CultureInfo.InvariantCulture,
                 out pivot);
+        }
+
+        private static void VerifyImportedBaseline(
+            W3xAnimationData animation, W3xHierarchyData hierarchy,
+            IEnumerable<ChannelMapping> supported,
+            Dictionary<string, AnimationCurve> bindings)
+        {
+            foreach (var mapping in supported)
+            {
+                var parsed = mapping.Parsed;
+                if (mapping.Kind != "Quaternion")
+                {
+                    var curve = GetCurve(bindings, mapping.Path,
+                        PositionProperty(mapping.Kind));
+                    if (curve == null)
+                    {
+                        if (parsed.Scalars.All(x =>
+                            Mathf.Abs(x) <= PositionTolerance))
+                            continue; // Expected for Phase 3A zero-only.
+                        throw new InvalidDataException(
+                            "Importer baseline is missing nonzero channel " +
+                            mapping.Kind + " on " + mapping.Path);
+                    }
+                    for (int frame = 0; frame < animation.NumFrames; frame++)
+                    {
+                        float time = frame / animation.FrameRate;
+                        float sourceValue = OriginalScalarAt(parsed, frame) +
+                            RestValue(hierarchy.Pivots[mapping.Pivot],
+                                mapping.Kind);
+                        if (Mathf.Abs(curve.Evaluate(time) -
+                            sourceValue) > PositionTolerance)
+                            throw new InvalidDataException(
+                                "Current imported source clip does not " +
+                                "reproduce W3X scalar channel " + mapping.Kind +
+                                " on " + mapping.Path + ". Reimport source.");
+                    }
+                }
+                else
+                {
+                    var q = RotationCurves(bindings, mapping.Path);
+                    if (q == null)
+                        throw new InvalidDataException(
+                            "Imported baseline lacks original quaternion " +
+                            "curves on " + mapping.Path);
+                    for (int frame = 0; frame < animation.NumFrames; frame++)
+                    {
+                        var sample = EditedSourceQuaternion(q,
+                            frame / animation.FrameRate,
+                            hierarchy.Pivots[mapping.Pivot].Rotation);
+                        if (!Equivalent(sample,
+                            OriginalQuaternionAt(parsed, frame)))
+                            throw new InvalidDataException(
+                                "Current imported source clip does not " +
+                                "reproduce W3X quaternion channel on " +
+                                mapping.Path + ". Reimport source.");
+                    }
+                }
+            }
         }
 
         private static string PivotPath(W3xHierarchyData hierarchy,
