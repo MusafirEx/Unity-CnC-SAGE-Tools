@@ -194,10 +194,21 @@ namespace MusafirEx.CncSage.Editor
                         original, doc, imported, edited, metadata, out ignored);
                 }), "Changed source FPS must be rejected.");
 
+                // A stale/replaced W3X imported source clip must be
+                // rejected even when the binding signatures still match.
+                edited.frameRate = 30f;
+                Modify(imported, path, "m_LocalPosition.x", 1, 20f);
+                Assert(Throws(() =>
+                {
+                    W3xPhase3CAnimationExportCore.Report ignored;
+                    W3xPhase3CAnimationExportCore.BuildDocument(
+                        original, doc, imported, edited, metadata, out ignored);
+                }), "Mismatched source XML vs imported baseline must fail.");
+
                 Debug.Log("[C&C SAGE Phase 3C] Animation export self-test " +
                     "PASS: zero-change byte-safe XML, changed X-axis/rest " +
                     "delta and quaternion frames, immutable unsupported " +
-                    "visibility/metadata, FPS preservation and safety gates.");
+                    "visibility/metadata, FPS and source-drift safety gates.");
             }
             catch (Exception e)
             {
