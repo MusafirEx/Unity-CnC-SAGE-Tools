@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.4.1 Phase 3A preview: Orientation quaternion channel compatibility and W3X animation diagnostics.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **animation export**, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet implemented**.
+**Status: 0.4.2 Phase 3A preview: root-pivot / prefab animation-binding audit.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **animation export**, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet implemented**.
 
 ## Install in Unity
 
@@ -609,6 +609,50 @@ assets on package update.
 compilation and **real Pitbull AnimationClip presence are not confirmed**
 until this PR is merged and the user's Unity project reloads it.
 Separate Phase 3B editing and Phase 3C export remain postponed.
+
+
+### Phase 3A v0.4.2 — verify SAGE_Pivots / ROOTTRANSFORM binding
+
+**Why this matters:** A generated Unity \`AnimationClip\` sub-asset does
+not prove that the clip can animate the actual edited Pitbull model.
+The importer creates the \`SAGE_Pivots\` GameObject **as an organizational
+holder**; it is not a W3X pivot index, and it normally has no animation
+curves. The genuine SAGE pivot at index 0 is typically named
+\`ROOTTRANSFORM\`, and an imported pivot-0 channel should target the
+Unity curve path \`SAGE_Pivots/ROOTTRANSFORM\` (or its actual resolved
+source hierarchy path). Do **not** synthesize missing root motion or
+move it to \`SAGE_Pivots\` without checking the original W3X.
+
+Use **Tools > C&C SAGE > Audit Selected Animation Pivot Bindings**:
+1. In Unity's Project window select all three Pitbull W3X
+   \`AnimationClip\` sub-assets, or select their parent source
+   \`.W3X\` assets together using Ctrl/Shift.
+2. Optionally also select \`GPPitbull_Editable.prefab\` in the
+   Project window to compare the imported animation curves to the
+   **target model's actual** pivot hierarchy.
+3. Run the binding-audit menu and inspect the full Unity Console
+   report. It prints each clip's curve count, distinct transform
+   binding paths, original W3X **pivot-0 channel count/types**,
+   expected imported pivot-0 path, root-pivot curve count and
+   missing transform-path count on the target prefab.
+4. If XML declares pivot-0 channels but the clip has no matching
+   root curves, investigate unsupported channel types, malformed
+   frames, or a pivot path mismatch. If XML declares no pivot-0
+   channel, missing root motion may be **intentional**, not a
+   dropped channel.
+5. The audit **does not create/edit** animation, model assets,
+   W3X sources or scene objects. It is intended to diagnose which
+   real-world bindings must be supported before Phase 3B playback.
+
+The existing Phase 3A synthetic self-test now also checks that
+the generated pivot-0 curves resolve against a valid imported
+\`SAGE_Pivots/ROOT\` hierarchy, that the holder itself has no curves,
+and that a mismatched target root is detected.
+
+**Important limitation:** The audit requires the Unity Editor bridge
+or a direct run in Unity for observed results. This change does not
+yet claim that the real Pitbull animations play correctly, and it
+does not alter the Phase 2 source-preserving W3X export.
 
 ## Roadmap
 
