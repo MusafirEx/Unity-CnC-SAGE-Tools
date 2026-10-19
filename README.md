@@ -796,7 +796,7 @@ The test creates an in-memory model and clip to check:
 The Phase 3C command is under **Tools > C&C SAGE > Export Animation to W3X...**.
 Starting with **0.6.1**, this menu always appears, even when a model,
 pivot or no asset is selected. Clicking it without a matching Phase 3B
-\`*_Editable.anim\` or \ `*_Source.asset` shows a selection guide and
+`*_Editable.anim` or `*_Source.asset` shows a selection guide and
 does not create files. A model/prefab or an imported W3X clip sub-asset
 is **not** a valid export selection.
 
