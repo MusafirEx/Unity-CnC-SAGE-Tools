@@ -94,6 +94,20 @@ namespace MusafirEx.CncSage.Editor
                     1f / 30f, -0.7071068f),
                     "Quaternion coordinate conversion wrong.");
 
+                // Clip curve paths must resolve against the imported SAGE
+                // model's root. The artificial holder is not a source pivot.
+                Assert(W3xAnimationBindingAudit.CountMissingTransformPaths(
+                    output, root.transform) == 0,
+                    "Generated clip has unresolved source pivot bindings.");
+                Assert(AnimationUtility.GetCurveBindings(output)
+                    .All(binding => binding.path != "SAGE_Pivots"),
+                    "The generated SAGE_Pivots holder must not be animated.");
+                var wrongRoot = new GameObject("WRONG_RIG");
+                wrongRoot.transform.SetParent(root.transform, false);
+                Assert(W3xAnimationBindingAudit.CountMissingTransformPaths(
+                    output, wrongRoot.transform) > 0,
+                    "Binding validator must detect missing target pivots.");
+
                 // Real W3X authoring tools label quaternion channels
                 // Type="Orientation". Ensure animation clips can also be
                 // generated without any translation channels.
@@ -172,7 +186,8 @@ namespace MusafirEx.CncSage.Editor
 
                 Debug.Log("[C&C SAGE Phase 3A] Animation import self-test PASS: " +
                     "scalar channels, quaternion, frame rate, rest pose, " +
-                    "Y/Z conversion, Orientation-only clips, pivot paths, missing rig, " +
+                    "Y/Z conversion, Orientation-only clips, pivot paths, " +
+                    "root binding verification, missing rig, " +
                     "_SKL companion resolution and warnings.");
             }
             catch (Exception e)
