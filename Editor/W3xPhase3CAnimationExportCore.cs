@@ -244,10 +244,25 @@ namespace MusafirEx.CncSage.Editor
                         PositionProperty(mapping.Kind)) : null;
                 AnimationCurve[] rotation = translated ? null :
                     RotationCurves(editBindings, mapping.Path);
+                if (translated &&
+                    parsed.Scalars.All(x =>
+                        Mathf.Abs(x) <= PositionTolerance))
+                {
+                    // Preserve an original all-zero scalar channel
+                    // unless the user actually CHANGED its corresponding
+                    // Unity curve relative to the Phase 3B baseline.
+                    // Unity can create synthetic sibling position tracks
+                    // when another axis is keyed. Re-exporting those
+                    // unedited tracks would wrongly rewrite all frames.
+                    var baselineScalar = GetCurve(baseBindings,
+                        mapping.Path, PositionProperty(mapping.Kind));
+                    if (SameSampledCurve(scalar, baselineScalar,
+                        sourceAnimation.NumFrames,
+                        sourceAnimation.FrameRate))
+                        continue;
+                }
                 if (translated && scalar == null)
                 {
-                    // A zero-only source channel was intentionally
-                    // omitted by the importer and remains unchanged.
                     if (parsed.Scalars.All(x =>
                             Mathf.Abs(x) <= PositionTolerance))
                         continue;
@@ -716,17 +731,21 @@ namespace MusafirEx.CncSage.Editor
                 var parsed = mapping.Parsed;
                 if (mapping.Kind != "Quaternion")
                 {
+                    // Phase 3A deliberately omits all-zero source
+                    // translation deltas. Unity may still synthesize
+                    // implicit position component curves if another
+                    // axis is animated on this Transform. They are
+                    // NOT proof that an all-zero source channel has
+                    // nonzero values (nor evidence of source drift).
+                    if (parsed.Scalars.All(x =>
+                        Mathf.Abs(x) <= PositionTolerance))
+                        continue;
                     var curve = GetCurve(bindings, mapping.Path,
                         PositionProperty(mapping.Kind));
                     if (curve == null)
-                    {
-                        if (parsed.Scalars.All(x =>
-                            Mathf.Abs(x) <= PositionTolerance))
-                            continue; // Expected for Phase 3A zero-only.
                         throw new InvalidDataException(
                             "Importer baseline is missing nonzero channel " +
                             mapping.Kind + " on " + mapping.Path);
-                    }
                     for (int frame = 0; frame < animation.NumFrames; frame++)
                     {
                         float time = frame / animation.FrameRate;
@@ -818,6 +837,18 @@ namespace MusafirEx.CncSage.Editor
                     b.propertyName,
                     b => AnimationUtility.GetEditorCurve(clip, b),
                     StringComparer.Ordinal);
+        }
+
+        private static bool SameSampledCurve(
+            AnimationCurve a, AnimationCurve b, int frames, float fps)
+        {
+            if (a == null || b == null)
+                return a == null && b == null;
+            for (int f = 0; f < frames; f++)
+                if (Mathf.Abs(a.Evaluate(f / fps) -
+                    b.Evaluate(f / fps)) > PositionTolerance)
+                    return false;
+            return true;
         }
 
         private static AnimationCurve GetCurve(
