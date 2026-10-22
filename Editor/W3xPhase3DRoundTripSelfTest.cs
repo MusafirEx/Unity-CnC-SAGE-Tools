@@ -25,6 +25,28 @@ namespace MusafirEx.CncSage.Editor
             W3xEditableAnimationSource metadata = null;
             try
             {
+                // Real-data discovery without touching imported assets.
+                // Only exports derived from the original W3X basename
+                // may be auto-selected. The selected original itself
+                // and unrelated model/animation files never qualify.
+                Assert(W3xPhase3DRoundTripValidator
+                        .IsGeneratedExportName("AURazDro_RUNA",
+                            "AURazDro_RUNA_unity_anim") &&
+                       W3xPhase3DRoundTripValidator
+                        .IsGeneratedExportName("AURazDro_RUNA",
+                            "AURazDro_RUNA_unity_anim (phase3D) 1") &&
+                       !W3xPhase3DRoundTripValidator
+                        .IsGeneratedExportName("AURazDro_RUNA",
+                            "AURazDro_RUNA") &&
+                       !W3xPhase3DRoundTripValidator
+                        .IsGeneratedExportName("AURazDro_RUNA",
+                            "AURazDro_RUNB_unity_anim") &&
+                       !W3xPhase3DRoundTripValidator
+                        .IsGeneratedExportName("AURazDro_RUNA",
+                            "AURazDro_RUNA_unity_animation"),
+                    "Phase 3D real-export name filter misidentified " +
+                    "original/unrelated or generated W3X filenames.");
+
                 const string xml =
                     "<AssetDeclaration xmlns='uri:ea.com:eala:asset'>" +
                     "<W3DHierarchy id='ROUND_RIG'>" +
@@ -208,7 +230,8 @@ namespace MusafirEx.CncSage.Editor
                     "source import, independent edit, source-backed export, " +
                     "new EYE ZTranslation, reimported frame samples, " +
                     "zero-only translation preservation, intentional " +
-                    "drift detection, and unknown XML preservation.");
+                    "drift detection, real-export discovery filter, " +
+                    "and unknown XML preservation.");
             }
             catch (Exception ex)
             {
