@@ -2,7 +2,7 @@
 
 Experimental **Unity 2022.3+** Editor importer for uncompiled **Command & Conquer SAGE W3X** model sources, intended to grow into W3X/W3D import/export tooling.
 
-**Status: 0.7.2 Phase 3D preview: suppress unchanged implicit Unity position channels during new SAGE channel detection.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **existing-channel editing and new-track export on source pivots** is now available as a Phase 3C preview, while animation roundtrip/game-toolchain validation, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet completed**.
+**Status: 0.7.3 Phase 3D preview: one-click discovery and read-only real RazorDrones W3X round-trip audit.** Geometry/UVs, SAGE pivot transforms, basic bone weights/SkinnedMeshRenderer and first-pass FXShader materials are implemented experimentally. Edited W3X export remains experimental; **existing-channel editing and new-track export on source pivots** is now available as a Phase 3C preview, while animation roundtrip/game-toolchain validation, binary W3D, exact SAGE shading, full HLOD assembly and validated Kane's Wrath interoperability are **not yet completed**.
 
 ## Install in Unity
 
@@ -1052,6 +1052,47 @@ stable, predictable XML layout.
 This release is **source-reviewed only** until Unity's Console
 actually reports both updated self-tests PASS.
 
+### Phase 3D v0.7.3 — audit real exported W3X from one selection
+
+Phase 3C and 3D self-tests on v0.7.2 returned **PASS** in the
+Unity Editor. The remaining acceptance gate is the numerical
+audit on the *actual* edited \`AURAZDRO_RUNA_Editable.anim\`
+and its reimported Phase 3C W3X source.
+
+Previous instructions required Ctrl+selecting the edited clip AND
+an exported W3X. A copy of the W3X placed in the Phase 3B
+workspace failed import because that directory had no relative
+\`aurazdro_skl.w3x\` companion hierarchy.
+
+**Updated workflow:**
+1. Select one \`*_Editable.anim\` or its \`*_Source.asset\` in
+   the Unity **Project** window.
+2. Choose **Tools > C&C SAGE > Validate Phase 3D Animation Round Trip**.
+3. The source W3X is resolved by its Phase 3B provenance GUID.
+   The latest \`<source_basename>_unity_anim*.w3x\` exported
+   file in that **same original source directory** is proposed,
+   only if Unity already imported one AnimationClip whose name
+   matches the original animation ID.
+4. Read the full candidate filename in the confirmation dialog.
+   Click **Validate** to run the existing read-only comparison
+   or **Cancel** to exit without changes.
+5. The Unity Console logs all three asset paths (edited, original
+   W3X and exported W3X), then PASS or FAIL plus frame/pivot
+   difference measurements.
+
+Users can still Ctrl+select the edited clip and an explicitly
+chosen exported W3X. A custom-named export not matching the
+\`_unity_anim\` pattern must use the explicit selection method.
+An export outside the original source directory is rejected
+because companion SKL dependencies can fail.
+
+**Safe by design:** this does NOT create, overwrite, modify or
+move the original W3X, output W3X, SKN, prefab, animation or scene.
+No automatic reimport or editor selection changes. Among eligible
+exports it proposes the most recently modified candidate only
+with user confirmation. Numeric validation of the real clip must
+still be run in Unity. Game toolchain validation remains separate.
+
 ## Phase 3D v0.7.0 — Full animation round-trip audit (preview)
 
 The original RazorDrones \`AURAZDRO_RUNA\` has already been edited,
@@ -1070,11 +1111,16 @@ animations with the original W3DHierarchy intact.
 1. Update Git UPM package to **0.7.0**; ensure Unity compiles.
 2. Run **Tools > C&C SAGE > Run Phase 3C Animation Export Self-Test**
    and **Tools > C&C SAGE > Run Phase 3D Round-Trip Self-Test**.
-3. In Unity's **Project** window Ctrl+select **exactly one**
-   Phase 3B \`*_Editable.anim\` (or its corresponding
-   \`*_Source.asset\`) **and exactly one exported Phase 3C \`.w3x\`
-   source file**. Do not select the original source \`.w3x\` here.
-   The original source is discovered by the Phase 3B metadata's GUID.
+3. In Unity's **Project** window, select **one** Phase 3B
+   \`*_Editable.anim\` (or its corresponding \`*_Source.asset\`).
+   The tool resolves the original W3X using provenance GUID and
+   discovers the most recent \`*_unity_anim.w3x\` or
+   \`*_unity_anim (...).w3x\` export in the ORIGINAL W3X folder,
+   provided it already has a matching imported AnimationClip.
+   Confirm the proposed output filename before auditing.
+   **Alternative:** Ctrl+select the edited clip and one explicit
+   output W3X to avoid auto-discovery. Do not select the original.
+
 4. Open **Tools > C&C SAGE > Validate Phase 3D Animation Round Trip**.
    It resolves the output W3X's imported AnimationClip by the
    original animation ID, then reads the original and exported W3X

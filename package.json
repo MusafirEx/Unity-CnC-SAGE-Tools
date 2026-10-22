@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Experimental Phase 3D: frame/XML round-trip validation and implicit Unity curve-aware W3X channel authoring.",
+  "description": "Experimental Phase 3D: recent-export discovery and read-only real W3X animation round-trip validation.",
   "unity": "2022.3",
   "keywords": ["command and conquer", "sage", "w3x", "w3d", "modding"],
   "author": {
