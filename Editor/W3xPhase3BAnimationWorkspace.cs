@@ -13,7 +13,7 @@ namespace MusafirEx.CncSage.Editor
     /// <summary>
     /// Phase 3B: create independent editable .anim clips and a disposable
     /// preview prefab/controller without writing to source W3X or model.
-    /// Phase 3C animation W3X export is deliberately NOT implemented here.
+    /// Animation export is available through the separate Phase 3C menu.
     /// </summary>
     internal static class W3xPhase3BAnimationWorkspace
     {
@@ -57,8 +57,9 @@ namespace MusafirEx.CncSage.Editor
                 "Model: " + model.name + "\n" +
                 "Source curves: " + totalCurves + "\n\n" +
                 "Original W3X XML and existing prefab assets will not " +
-                "be modified. These editable .anim files are NOT yet " +
-                "exportable back to W3X (Phase 3C).",
+                "be modified. Edited .anim files can be exported using " +
+                "Tools > C&C SAGE > Export Animation to W3X. " +
+                "A new W3X XML copy is created beside its source.",
                 "Create Workspace", "Cancel"))
                 return;
 
