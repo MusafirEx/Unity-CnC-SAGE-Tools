@@ -101,6 +101,10 @@ namespace MusafirEx.CncSage.Editor
                 XDocument output = W3xExportCore.LoadSource(
                     Path.GetFullPath(exportedPath));
                 W3xDocument parsedSource = W3xReader.Read(sourcePath);
+                Debug.Log("[C&C SAGE Phase 3D] Real-asset audit inputs:" +
+                    "\nEdited: " + AssetDatabase.GetAssetPath(edited) +
+                    "\nOriginal: " + sourcePath +
+                    "\nExported: " + exportedPath);
                 var report = Compare(source, output, parsedSource,
                     edited, imported, metadata);
                 Debug.Log(report.Describe());
@@ -150,9 +154,11 @@ namespace MusafirEx.CncSage.Editor
             if (edited == null ||
                 metadata != null && metadata.EditableClip != edited)
             {
-                reason = "Select the Phase 3B *_Editable.anim " +
-                    "(or its *_Source.asset), plus the EXPORTED W3X " +
-                    "file from Phase 3C in Unity's Project window.";
+                reason = "Select one Phase 3B *_Editable.anim " +
+                    "(or its *_Source.asset) in Unity's Project " +
+                    "window. The latest generated W3X beside the " +
+                    "original source can be discovered automatically, " +
+                    "or Ctrl+select an explicit exported W3X.";
                 return false;
             }
 
@@ -193,18 +199,62 @@ namespace MusafirEx.CncSage.Editor
                     string.Equals(Path.GetExtension(p), ".w3x",
                         StringComparison.OrdinalIgnoreCase))
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            if (selectedW3x.Length != 1 ||
-                string.Equals(selectedW3x[0], sourcePath,
-                    StringComparison.OrdinalIgnoreCase))
+            if (selectedW3x.Length > 1)
             {
-                reason = "Select the newly EXPORTED .w3x file " +
-                    "(not the original), together with your " +
-                    "Phase 3B *_Editable.anim in the Project window. " +
-                    "Use Ctrl+click for multi-selection.";
+                reason = "Select at most one exported W3X. Choose " +
+                    "the Phase 3B edited clip alone to auto-discover " +
+                    "the newest valid exported animation.";
                 return false;
             }
-            exportedPath = selectedW3x[0];
             string animationId = metadata.OriginalAnimationId;
+            if (selectedW3x.Length == 0)
+            {
+                exportedPath = FindLatestExport(sourcePath, animationId);
+                if (string.IsNullOrEmpty(exportedPath))
+                {
+                    reason = "No generated _unity_anim W3X with a " +
+                        "matching imported AnimationClip was found " +
+                        "beside the ORIGINAL source W3X. Export your " +
+                        "Phase 3B clip with Phase 3C to a NEW W3X " +
+                        "in the original source directory, then " +
+                        "re-run. Alternatively Ctrl+select an " +
+                        "explicit exported W3X along with the clip.";
+                    return false;
+                }
+                if (!EditorUtility.DisplayDialog("C&C SAGE Phase 3D",
+                    "Found the newest importable Phase 3C W3X:\n" +
+                    exportedPath +
+                    "\n\nOriginal source:\n" + sourcePath +
+                    "\n\nThe imported clip will be compared " +
+                    "frame-by-frame to your edited Phase 3B clip. " +
+                    "No files will be modified. Continue?",
+                    "Validate", "Cancel"))
+                {
+                    reason = "Round-trip audit cancelled. No assets " +
+                        "or W3X files were changed.";
+                    return false;
+                }
+            }
+            else
+                exportedPath = selectedW3x[0];
+            if (string.Equals(exportedPath, sourcePath,
+                StringComparison.OrdinalIgnoreCase))
+            {
+                reason = "The original source W3X cannot be its own " +
+                    "round-trip output. Select a new exported W3X.";
+                return false;
+            }
+            if (!string.Equals(
+                Path.GetDirectoryName(exportedPath),
+                Path.GetDirectoryName(sourcePath),
+                StringComparison.OrdinalIgnoreCase))
+            {
+                reason = "The exported W3X must be beside the " +
+                    "original W3X to resolve SAGE _SKL hierarchy " +
+                    "dependencies. Do not copy only the animation " +
+                    "W3X into the Phase 3B workspace folder.";
+                return false;
+            }
             imported = AssetDatabase.LoadAllAssetsAtPath(exportedPath)
                 .OfType<AnimationClip>().SingleOrDefault(c =>
                     string.Equals(c.name, animationId,
@@ -217,6 +267,62 @@ namespace MusafirEx.CncSage.Editor
                 return false;
             }
             return true;
+        }
+
+        // Retain the original W3X model/companion directory.
+        // Moving just one animation W3X into the Phase 3B workspace
+        // breaks relative _SKL references and loses imported clips.
+        private static string FindLatestExport(string sourcePath,
+            string animationId)
+        {
+            string folder = Path.GetDirectoryName(sourcePath);
+            string stem = Path.GetFileNameWithoutExtension(sourcePath);
+            if (string.IsNullOrEmpty(folder) ||
+                !Directory.Exists(folder) ||
+                string.IsNullOrEmpty(stem) ||
+                string.IsNullOrEmpty(animationId))
+                return null;
+
+            var candidates = Directory.GetFiles(folder,
+                    "*.w3x", SearchOption.TopDirectoryOnly)
+                .Where(p => IsGeneratedExportName(stem,
+                    Path.GetFileNameWithoutExtension(p)))
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .ThenBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .Take(40).ToArray();
+            foreach (string candidate in candidates)
+            {
+                string assetPath = candidate.Replace('\\', '/');
+                // The W3X must already have resolved companion
+                // hierarchy and generated the expected imported
+                // AnimationClip. No reimport is triggered here.
+                var clips = AssetDatabase.LoadAllAssetsAtPath(assetPath)
+                    .OfType<AnimationClip>()
+                    .Where(c => string.Equals(c.name,
+                        animationId, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+                if (clips.Length == 1)
+                    return assetPath;
+            }
+            return null;
+        }
+
+        internal static bool IsGeneratedExportName(
+            string originalStem, string candidateStem)
+        {
+            if (string.IsNullOrEmpty(originalStem) ||
+                string.IsNullOrEmpty(candidateStem))
+                return false;
+            const string marker = "_unity_anim";
+            string prefix = originalStem + marker;
+            if (!candidateStem.StartsWith(prefix,
+                StringComparison.OrdinalIgnoreCase))
+                return false;
+            if (candidateStem.Length == prefix.Length)
+                return true;
+            char next = candidateStem[prefix.Length];
+            return next == ' ' || next == '_' ||
+                next == '-' || next == '(';
         }
 
         internal static Report Compare(XDocument source, XDocument output,
