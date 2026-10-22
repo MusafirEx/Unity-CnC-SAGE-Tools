@@ -1,10 +1,16 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Experimental Phase 3D: recent-export discovery and read-only real W3X animation round-trip validation.",
+  "description": "Unity C&C SAGE W3X importer and source-preserving model/animation exporter, with clean production Editor menus.",
   "unity": "2022.3",
-  "keywords": ["command and conquer", "sage", "w3x", "w3d", "modding"],
+  "keywords": [
+    "command and conquer",
+    "sage",
+    "w3x",
+    "w3d",
+    "modding"
+  ],
   "author": {
     "name": "Musafir Ex"
   },
