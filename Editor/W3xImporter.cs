@@ -39,7 +39,8 @@ namespace MusafirEx.CncSage.Editor
             // tracks; models with unsupported animation channels remain
             // metadata-only placeholders. Geometry import is unchanged.
             root.AddComponent<CncSageSourceInfo>()
-                .SetSourceInfo(document.Declarations.ToArray(), document.Meshes.Count);
+                .SetSourceInfo(document.Declarations.ToArray(),
+                    options == null || options.importMeshes ? document.Meshes.Count : 0);
             context.AddObjectToAsset("root", root);
             context.SetMainObject(root);
 
