@@ -11,7 +11,7 @@ namespace MusafirEx.CncSage.Editor
     /// Shared read-only import inspection UI, intentionally separate from W3X/W3D
     /// parsing and export code. Uses only imported Unity assets and sub-assets.
     /// </summary>
-    internal abstract class SageImporterInspectorBase : ScriptedImporterEditor
+    public abstract class SageImporterInspectorBase : ScriptedImporterEditor
     {
         private static readonly string[] TabNames =
             { "Model", "Rig", "Animation", "Material" };
@@ -384,12 +384,12 @@ namespace MusafirEx.CncSage.Editor
     }
 
     [CustomEditor(typeof(W3xImporter))]
-    internal sealed class W3xImporterInspector : SageImporterInspectorBase
+    public sealed class W3xImporterInspector : SageImporterInspectorBase
     {
     }
 
     [CustomEditor(typeof(W3dImporter))]
-    internal sealed class W3dImporterInspector : SageImporterInspectorBase
+    public sealed class W3dImporterInspector : SageImporterInspectorBase
     {
     }
 }
