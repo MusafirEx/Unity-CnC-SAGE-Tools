@@ -387,6 +387,188 @@ namespace MusafirEx.CncSage.Editor
                 "rewritten by this tab.", MessageType.None);
         }
 
+
+        private SerializedProperty Option(string name)
+        {
+            return serializedObject.FindProperty("options." + name);
+        }
+
+        private void Prop(string name, string caption)
+        {
+            SerializedProperty field = Option(name);
+            if (field == null)
+            {
+                EditorGUILayout.HelpBox("Importer setting not found: " + name,
+                    MessageType.Warning);
+                return;
+            }
+            EditorGUILayout.PropertyField(field, new GUIContent(caption), true);
+        }
+
+        private static SerializedProperty FindOverride(SerializedProperty array, string key)
+        {
+            if (array == null || !array.isArray) return null;
+            for (int i = 0; i < array.arraySize; i++)
+            {
+                var entry = array.GetArrayElementAtIndex(i);
+                if (entry.FindPropertyRelative("key").stringValue == key)
+                    return entry;
+            }
+            return null;
+        }
+
+        private static void AssignOverride(SerializedProperty array, string key, Material material)
+        {
+            SerializedProperty element = FindOverride(array, key);
+            if (element == null)
+            {
+                if (material == null) return;
+                int next = array.arraySize;
+                array.InsertArrayElementAtIndex(next);
+                element = array.GetArrayElementAtIndex(next);
+                element.FindPropertyRelative("key").stringValue = key;
+            }
+            element.FindPropertyRelative("material").objectReferenceValue = material;
+        }
+
+        private void DrawMaterialOverrides()
+        {
+            if (string.IsNullOrEmpty(cachedPath)) return;
+            var index = AssetDatabase.LoadAllAssetsAtPath(cachedPath)
+                .OfType<SageMaterialManifest>().FirstOrDefault();
+            if (index == null)
+            {
+                EditorGUILayout.HelpBox("No material manifest. Reimport to build material slots.",
+                    MessageType.Info);
+                return;
+            }
+            var overrides = Option("materialOverrides");
+            if (overrides == null) return;
+            Section("Material Slots (" + index.entries.Count + ")");
+            foreach (SageMaterialEntry entry in index.entries)
+            {
+                if (entry == null) continue;
+                using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+                {
+                    EditorGUILayout.LabelField(entry.sourceName + " (slot " +
+                        entry.slot + ")", EditorStyles.boldLabel);
+                    EditorGUILayout.LabelField(entry.rendererPath, EditorStyles.miniLabel);
+                    using (new EditorGUI.DisabledScope(true))
+                    {
+                        EditorGUILayout.ObjectField("Generated Material", entry.generatedMaterial,
+                            typeof(Material), false);
+                        EditorGUILayout.ObjectField("Source Texture", entry.texture,
+                            typeof(Texture), false);
+                    }
+
+                    var item = FindOverride(overrides, entry.key);
+                    Material current = item == null ? null :
+                        item.FindPropertyRelative("material").objectReferenceValue as Material;
+                    EditorGUI.BeginChangeCheck();
+                    Material selected = EditorGUILayout.ObjectField("External Material",
+                        current, typeof(Material), false) as Material;
+                    if (!EditorGUI.EndChangeCheck()) continue;
+                    string sourcePath = selected == null ? "" :
+                        AssetDatabase.GetAssetPath(selected);
+                    if (selected != null &&
+                        (!sourcePath.EndsWith(".mat", StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(sourcePath, cachedPath,
+                             StringComparison.OrdinalIgnoreCase)))
+                    {
+                        EditorUtility.DisplayDialog("External material required",
+                            "Choose a separate .mat in Assets or use Extract Materials.",
+                            "OK");
+                    }
+                    else
+                        AssignOverride(overrides, entry.key, selected);
+                }
+            }
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Extract Materials...", GUILayout.Height(25f)))
+                    ExtractMaterials(index);
+                using (new EditorGUI.DisabledScope(overrides.arraySize == 0))
+                    if (GUILayout.Button("Clear Overrides", GUILayout.Height(25f)))
+                        overrides.ClearArray();
+            }
+            EditorGUILayout.HelpBox("Material assignments are saved with Apply. " +
+                "Extract Materials creates standalone editable .mat files and " +
+                "assigns them as external overrides.", MessageType.None);
+        }
+
+        private static string SafeName(string input)
+        {
+            if (string.IsNullOrEmpty(input)) return "Material";
+            foreach (char ch in Path.GetInvalidFileNameChars())
+                input = input.Replace(ch, '_');
+            return input.Replace('/', '_').Replace('\\', '_').Replace(':', '_');
+        }
+
+        private SageImportOptions GetSettings()
+        {
+            var w3d = target as W3dImporter;
+            if (w3d != null) return w3d.options;
+            var w3x = target as W3xImporter;
+            return w3x == null ? null : w3x.options;
+        }
+
+        private void ExtractMaterials(SageMaterialManifest index)
+        {
+            if (index == null || index.entries == null || index.entries.Count == 0)
+                return;
+            string destination = EditorUtility.OpenFolderPanel(
+                "Extract SAGE Materials", Application.dataPath, "");
+            if (string.IsNullOrEmpty(destination)) return;
+            string relativeFolder = FileUtil.GetProjectRelativePath(destination);
+            if (string.IsNullOrEmpty(relativeFolder)) relativeFolder = "";
+            relativeFolder = relativeFolder.Replace('\\', '/');
+            if (relativeFolder != "Assets" &&
+                !relativeFolder.StartsWith("Assets/", StringComparison.Ordinal))
+            {
+                EditorUtility.DisplayDialog("Invalid destination",
+                    "Select a folder within the project's Assets directory.", "OK");
+                return;
+            }
+
+            serializedObject.ApplyModifiedProperties();
+            SageImportOptions settings = GetSettings();
+            var importer = target as AssetImporter;
+            if (settings == null || importer == null) return;
+            if (settings.materialOverrides == null)
+                settings.materialOverrides = new List<SageMaterialOverride>();
+            int extracted = 0;
+            foreach (SageMaterialEntry entry in index.entries)
+            {
+                if (entry == null || entry.generatedMaterial == null) continue;
+                string basename = SafeName(entry.sourceName) + "_" +
+                    SafeName(entry.rendererPath.Replace("/", "_")) +
+                    "_slot" + entry.slot;
+                string path = AssetDatabase.GenerateUniqueAssetPath(
+                    relativeFolder + "/" + basename + ".mat");
+                Material standalone = new Material(entry.generatedMaterial);
+                standalone.name = entry.sourceName;
+                AssetDatabase.CreateAsset(standalone, path);
+                SageMaterialOverride record = settings.materialOverrides.FirstOrDefault(
+                    e => e != null && e.key == entry.key);
+                if (record == null)
+                {
+                    record = new SageMaterialOverride { key = entry.key };
+                    settings.materialOverrides.Add(record);
+                }
+                record.material = standalone;
+                extracted++;
+            }
+            if (extracted == 0)
+            {
+                EditorUtility.DisplayDialog("No material to extract",
+                    "No generated Unity materials were found.", "OK");
+                return;
+            }
+            EditorUtility.SetDirty(importer);
+            importer.SaveAndReimport();
+            GUIUtility.ExitGUI();
+        }
+
         private static string RelativePath(Transform node, Transform root)
         {
             var parts = new List<string>();
