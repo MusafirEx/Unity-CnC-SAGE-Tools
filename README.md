@@ -2,7 +2,7 @@
 
 Unity 2022.3 LTS+ Editor tools for **Generals / Zero Hour** binary **W3D importing**, alongside **Tiberium Wars / Kane's Wrath** source **W3X** model/animation import and export.
 
-**Version 0.8.1 — shared W3D/W3X Inspector tabs for Model, Rig, Animation and Material.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
+**Version 0.8.2 — FBX-style editable Model/Rig/Animation/Material Inspector, based on Bress2Unity's Unity importer.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
 
 > W3D support is **import only**; this package is not a W3D exporter, game asset extractor or confirmed game-ready mod builder. Keep backups and validate with the game toolchain separately.
 
@@ -14,21 +14,26 @@ In Unity, select **Window > Package Manager > + > Add package from git URL**:
 https://github.com/MusafirEx/Unity-CnC-SAGE-Tools.git
 ```
 
-Git and Unity 2022.3 LTS or later are required. After updating a Git-based package, ensure Package Manager resolves **0.8.1** and scripts compile. Do not keep a duplicate installed copy under `Assets/`, or duplicate Editor assemblies may conflict.
+Git and Unity 2022.3 LTS or later are required. After updating a Git-based package, ensure Package Manager resolves **0.8.2** and scripts compile. Do not keep a duplicate installed copy under `Assets/`, or duplicate Editor assemblies may conflict.
 
-### Unified W3D / W3X Inspector (v0.8.1)
+### FBX-style shared W3D/W3X Inspector (v0.8.2)
 
-Selecting a `.w3d` or `.w3x` **source file** in the Project window now opens the same four-tab read-only import Inspector:
+The package now follows the **Bress2Unity** `BrresImporterEditor` design: selecting a W3D or W3X source file opens **Model | Rig | Animation | Material** tabs with serialized import options and Unity **Apply / Revert**. The previous read-only statistics are preserved underneath these settings.
 
-| Tab | Shows |
+| Tab | Import options and inspection |
 |---|---|
-| **Model** | Actual imported mesh counts, geometry totals, renderer counts, UV presence and W3X declarations |
-| **Rig** | Imported `SAGE_Pivots` hierarchy, pivot counts, names and skinned renderer count |
-| **Animation** | Imported `AnimationClip` sub-assets, lengths, sample rates, legacy/Mecanim flag and selection actions |
-| **Material** | Imported materials, shader names and assigned primary texture references |
+| **Model** | Import Meshes; Scale Factor (Unity prefab root only); imported mesh, vertex, triangle, UV and renderer information |
+| **Rig** | Animation Type: **None**, **Legacy** or **Generic**; for Generic, choose **Create From This Model** or **Copy From Other Avatar** with an external Generic Avatar, and optional root motion bone; inspect pivot hierarchy |
+| **Animation** | Import Animations; inspect imported AnimationClip sub-assets, lengths and frame rates |
+| **Material** | Import Materials; Generated Material Shader; per-renderer/slot external `.mat` assignments; **Extract Materials...** and **Clear Overrides**; inspect imported materials and textures |
 
-The tabs inspect the **actual Unity-imported objects**, without reparsing game files, modifying import settings or changing the existing W3X exporters. Use **Refresh** after reimporting a file. The Model tab is not a mesh editor, the Rig tab is not Unity Avatar generation, and the Material tab does not extract textures from BIG archives. **This version is inspection-only**; no Apply/Revert controls are necessary until editable importer settings are introduced.
+**Defaults preserve v0.8.1 behavior:** W3X rig defaults to None (clips as sub-assets with no new Animation component), W3D rig defaults to Legacy, meshes and animations are enabled, generated preview materials are assigned, model scale is 1.
 
+**How to extract editable materials:** Select a source W3D/W3X file → Material → Extract Materials... → choose a directory inside `Assets/`. The plugin creates standalone `.mat` assets, assigns them as external overrides and reimports the source. To use your own material instead, drag an external `.mat` into its source material slot and click Apply. Clear Overrides restores source-generated preview materials after Apply.
+
+**Scope:** Generic Avatars are experimental and may require a valid matched SAGE pivot hierarchy; Humanoid retargeting is not implemented. W3D compressed animations, distributed HLOD assembly and advanced multipass shaders remain unsupported. Source W3D/W3X files and existing W3X exporters are not changed by importer Inspector settings.
+
+**Reference:** [Bress2Unity's importer Inspector](https://github.com/MusafirEx/Bress2Unity/blob/main/Packages/com.musafirex.chr0-to-unity/Editor/BRRES/BrresImporterEditor.cs).
 
 ## Generals / Zero Hour — binary W3D import (new in 0.8.0)
 
