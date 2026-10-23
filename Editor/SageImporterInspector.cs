@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using UnityEditor;
 using UnityEditor.AssetImporters;
 using UnityEngine;
@@ -30,9 +31,6 @@ namespace MusafirEx.CncSage.Editor
         private Transform pivotRoot;
         private string[] declarations = Array.Empty<string>();
 
-        // The initial inspector only reports the *actual* imported assets.
-        // There are no editable importer options to apply or revert yet.
-        protected override bool needsApplyRevert { get { return false; } }
 
         public override void OnEnable()
         {
@@ -103,6 +101,7 @@ namespace MusafirEx.CncSage.Editor
 
         public override void OnInspectorGUI()
         {
+            serializedObject.Update();
             var importer = target as AssetImporter;
             string currentPath = importer != null ? importer.assetPath : null;
             if (!string.Equals(cachedPath, currentPath, StringComparison.Ordinal))
@@ -141,12 +140,18 @@ namespace MusafirEx.CncSage.Editor
 
             GUILayout.Space(8f);
             EditorGUILayout.HelpBox(
-                "These tabs inspect the imported Unity objects. They do not change the " +
-                "original W3D/W3X files or the existing W3X exporter.", MessageType.None);
+                "Import settings take effect after Apply. Original W3D/W3X sources " +
+                "and W3X export commands are not modified.", MessageType.None);
+            serializedObject.ApplyModifiedProperties();
+            ApplyRevertGUI();
         }
 
         private void DrawModel()
         {
+            Section("Model Import Settings");
+            Prop("importMeshes", "Import Meshes");
+            Prop("unitsToMeters", "Scale Factor");
+            EditorGUILayout.Space();
             Section("Model Summary");
             if (root == null)
             {
@@ -222,6 +227,34 @@ namespace MusafirEx.CncSage.Editor
 
         private void DrawRig()
         {
+            Section("Rig Import Settings");
+            Prop("rigType", "Animation Type");
+            SerializedProperty kind = Option("rigType");
+            if (kind != null && !kind.hasMultipleDifferentValues)
+            {
+                SageRigType type = (SageRigType)kind.enumValueIndex;
+                if (type == SageRigType.Generic)
+                {
+                    Prop("avatarDefinition", "Avatar Definition");
+                    SerializedProperty definition = Option("avatarDefinition");
+                    if (definition != null && (SageAvatarDefinition)definition.enumValueIndex ==
+                        SageAvatarDefinition.CopyFromOtherAvatar)
+                        Prop("sourceAvatar", "Source Avatar");
+                    else
+                        Prop("genericRootBone", "Root Motion Bone");
+                    EditorGUILayout.HelpBox("Generic creates/reuses a Unity Generic Avatar. " +
+                        "Source bone paths remain intact.", MessageType.Info);
+                }
+                else if (type == SageRigType.Legacy)
+                    EditorGUILayout.HelpBox("Legacy adds the Animation component when " +
+                        "clips exist; no Avatar is generated.", MessageType.Info);
+                else
+                    EditorGUILayout.HelpBox("None keeps imported pivots/clips without an " +
+                        "Animation, Animator or Avatar.", MessageType.Info);
+            }
+            EditorGUILayout.HelpBox("Humanoid retargeting is not yet supported. " +
+                "SAGE unit models typically use non-humanoid hierarchies.", MessageType.None);
+            EditorGUILayout.Space();
             Section("Skeleton / Pivot Hierarchy");
             if (pivotRoot == null)
             {
@@ -262,6 +295,11 @@ namespace MusafirEx.CncSage.Editor
 
         private void DrawAnimation()
         {
+            Section("Animation Import Settings");
+            Prop("importAnimations", "Import Animations");
+            EditorGUILayout.HelpBox("W3D supports uncompressed tracks. W3X uses existing " +
+                "source animation conversion and preserves frame rates.", MessageType.None);
+            EditorGUILayout.Space();
             Section("Imported Animation Clips");
             Row("Clip Count", clips.Length.ToString());
             if (clips.Length == 0)
@@ -303,6 +341,11 @@ namespace MusafirEx.CncSage.Editor
 
         private void DrawMaterial()
         {
+            Section("Material Import Settings");
+            Prop("importMaterials", "Import Materials");
+            Prop("materialShaderOverride", "Generated Material Shader");
+            DrawMaterialOverrides();
+            EditorGUILayout.Space();
             Section("Imported Materials");
             Row("Material Count", materials.Length.ToString());
             if (materials.Length == 0)
