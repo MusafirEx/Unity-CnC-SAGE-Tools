@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Unity C&C SAGE W3X model/animation tools with experimental binary W3D importer for Generals / Zero Hour.",
+  "description": "Unity C&C SAGE source W3X tools and binary W3D importer with shared Model/Rig/Animation/Material inspector.",
   "unity": "2022.3",
   "keywords": [
     "command and conquer",
