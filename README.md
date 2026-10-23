@@ -37,7 +37,7 @@ The package now follows the **Bress2Unity** `BrresImporterEditor` design: select
 
 ## Generals / Zero Hour — binary W3D import (new in 0.8.0)
 
-**One Unity plugin, two formats.** Add .w3d files under Assets/ and Unity imports them automatically using a separate read-only importer. The existing W3X tool menus remain available.
+**One Unity plugin, two formats.** Add .w3d files under Assets/ and Unity imports them automatically using a separate import-only reader. The existing W3X tool menus remain available.
 
 1. Extract legally obtained W3D files from your Generals / Zero Hour BIG archives and copy them into your Unity Assets folder.
 2. Put companion *_SKL.w3d files beside *_SKN.w3d or animation W3D files when available. Extract referenced textures to the same folder and import the images into Unity.
