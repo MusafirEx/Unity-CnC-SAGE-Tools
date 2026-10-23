@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.7.4",
+  "version": "0.8.0",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Unity C&C SAGE W3X importer and source-preserving model/animation exporter, with clean production Editor menus.",
+  "description": "Unity C&C SAGE W3X model/animation tools with experimental binary W3D importer for Generals / Zero Hour.",
   "unity": "2022.3",
   "keywords": [
     "command and conquer",
@@ -19,6 +19,11 @@
       "displayName": "Minimal W3X Mesh",
       "description": "A synthetic triangle for verifying the initial importer.",
       "path": "Samples~/MinimalW3X"
+    },
+    {
+      "displayName": "Minimal W3D Import Test",
+      "description": "Generate a small synthetic W3D model and animation to verify the importer.",
+      "path": "Samples~/MinimalW3D"
     }
   ]
 }
