@@ -20,10 +20,11 @@ namespace MusafirEx.CncSage.Editor
         {
             var data = W3dBinaryReader.Read(context.assetPath);
             W3dBinaryReader.HierarchyData hierarchy = data.Hierarchy;
-            if (hierarchy == null && data.Animations.Count != 0)
+            if (hierarchy == null)
             {
-                string companion = FindHierarchyCompanion(context.assetPath,
-                    data.Animations[0].HierarchyName);
+                string hint = data.Animations.Count != 0 ?
+                    data.Animations[0].HierarchyName : data.ModelHierarchyName;
+                string companion = FindHierarchyCompanion(context.assetPath, hint);
                 if (companion != null)
                 {
                     context.DependsOnSourceAsset(companion);
@@ -132,9 +133,9 @@ namespace MusafirEx.CncSage.Editor
                 context.AddObjectToAsset("W3D_Animation_" + i, clip);
                 if (animationComponent == null)
                     animationComponent = root.AddComponent<Animation>();
+                animationComponent.AddClip(clip, clip.name);
                 if (animationComponent.clip == null)
                     animationComponent.clip = clip;
-                animationComponent.AddClip(clip, clip.name);
             }
 
             if (anySkin)
@@ -295,17 +296,21 @@ namespace MusafirEx.CncSage.Editor
 
         private static string FindHierarchyCompanion(string assetPath, string name)
         {
-            if (string.IsNullOrEmpty(name)) return null;
             string folder = Path.GetDirectoryName(assetPath);
             if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder)) return null;
+            string sourceName = Path.GetFileNameWithoutExtension(assetPath);
+            string modelBase = sourceName.EndsWith("_SKN", StringComparison.OrdinalIgnoreCase) ?
+                sourceName.Substring(0, sourceName.Length - 4) : sourceName;
             string[] candidates = Directory.GetFiles(folder, "*.w3d", SearchOption.TopDirectoryOnly);
             foreach (string path in candidates)
             {
                 if (string.Equals(path, assetPath, StringComparison.OrdinalIgnoreCase))
                     continue;
                 string stem = Path.GetFileNameWithoutExtension(path);
-                if (string.Equals(stem, name, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(stem, name + "_SKL", StringComparison.OrdinalIgnoreCase))
+                if ((!string.IsNullOrEmpty(name) &&
+                    (string.Equals(stem, name, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(stem, name + "_SKL", StringComparison.OrdinalIgnoreCase))) ||
+                    string.Equals(stem, modelBase + "_SKL", StringComparison.OrdinalIgnoreCase))
                     return path.Replace('\\', '/');
             }
             return null;
