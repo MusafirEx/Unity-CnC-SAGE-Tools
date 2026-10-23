@@ -12,6 +12,8 @@ namespace MusafirEx.CncSage.Editor
     [ScriptedImporter(7, "w3x")]
     public sealed class W3xImporter : ScriptedImporter
     {
+        public SageImportOptions options = new SageImportOptions();
+
         public override void OnImportAsset(AssetImportContext context)
         {
             var document = W3xReader.Read(context.assetPath);
@@ -43,7 +45,9 @@ namespace MusafirEx.CncSage.Editor
 
             // Phase 1B: build meshes, pivot hierarchy, skinned renderers,
             // and basic FXShader-derived materials in one import pass.
-            W3xModelBuilder.Build(context, document, root);
+            var generatedClips = new System.Collections.Generic.List<AnimationClip>();
+            W3xModelBuilder.Build(context, document, root, options, generatedClips);
+            SageImporterPostprocessor.Finish(context, root, options, generatedClips);
         }
     }
 }
