@@ -126,7 +126,7 @@ namespace MusafirEx.CncSage.Editor
                 throw new InvalidDataException("Incomplete W3D chunk header at byte " + at);
             uint type = reader.ReadUInt32();
             uint rawLength = reader.ReadUInt32();
-            long length = rawLength & 0x7FFFFFFFUL;
+            long length = (long)(rawLength & 0x7FFFFFFFU);
             long start = reader.BaseStream.Position;
             if (length > parentEnd - start)
                 throw new InvalidDataException("W3D chunk 0x" + type.ToString("X") +
