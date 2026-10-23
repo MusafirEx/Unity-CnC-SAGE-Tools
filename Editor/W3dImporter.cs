@@ -16,6 +16,11 @@ namespace MusafirEx.CncSage.Editor
     [ScriptedImporter(1, "w3d")]
     public sealed class W3dImporter : ScriptedImporter
     {
+        public SageImportOptions options = new SageImportOptions
+        {
+            rigType = SageRigType.Legacy
+        };
+
         public override void OnImportAsset(AssetImportContext context)
         {
             var data = W3dBinaryReader.Read(context.assetPath);
@@ -39,7 +44,8 @@ namespace MusafirEx.CncSage.Editor
             Transform[] pivots = BuildHierarchy(root.transform, hierarchy);
             string assetFolder = Path.GetDirectoryName(context.assetPath).Replace('\\', '/');
             bool anySkin = false;
-            for (int i = 0; i < data.Meshes.Count; i++)
+            for (int i = 0; i < (options == null || options.importMeshes ?
+                data.Meshes.Count : 0); i++)
             {
                 var src = data.Meshes[i];
                 if (src.Vertices.Count == 0 || src.Indices.Count == 0) continue;
@@ -108,8 +114,9 @@ namespace MusafirEx.CncSage.Editor
                 }
             }
 
-            Animation animationComponent = null;
-            for (int i = 0; i < data.Animations.Count; i++)
+            var importedClips = new List<AnimationClip>();
+            for (int i = 0; i < (options == null || options.importAnimations ?
+                data.Animations.Count : 0); i++)
             {
                 var source = data.Animations[i];
                 if (hierarchy == null || source.FrameCount <= 0 || source.FrameRate <= 0)
@@ -131,12 +138,10 @@ namespace MusafirEx.CncSage.Editor
                 AnimationClip clip = BuildClip(source, hierarchy, data.Warnings);
                 clip.name = string.IsNullOrEmpty(source.Name) ? "W3D_Animation_" + i : source.Name;
                 context.AddObjectToAsset("W3D_Animation_" + i, clip);
-                if (animationComponent == null)
-                    animationComponent = root.AddComponent<Animation>();
-                animationComponent.AddClip(clip, clip.name);
-                if (animationComponent.clip == null)
-                    animationComponent.clip = clip;
+                importedClips.Add(clip);
             }
+
+            SageImporterPostprocessor.Finish(context, root, options, importedClips);
 
             if (anySkin)
                 data.Warnings.Add("W3D skin preview is experimental: fixup matrices and multi-weight skinning are not reconstructed.");
