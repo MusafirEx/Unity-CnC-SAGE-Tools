@@ -301,7 +301,9 @@ namespace MusafirEx.CncSage.Editor
             string sourceName = Path.GetFileNameWithoutExtension(assetPath);
             string modelBase = sourceName.EndsWith("_SKN", StringComparison.OrdinalIgnoreCase) ?
                 sourceName.Substring(0, sourceName.Length - 4) : sourceName;
-            string[] candidates = Directory.GetFiles(folder, "*.w3d", SearchOption.TopDirectoryOnly);
+            string[] candidates = Directory.GetFiles(folder, "*", SearchOption.TopDirectoryOnly)
+                .Where(p => string.Equals(Path.GetExtension(p), ".w3d",
+                    StringComparison.OrdinalIgnoreCase)).ToArray();
             foreach (string path in candidates)
             {
                 if (string.Equals(path, assetPath, StringComparison.OrdinalIgnoreCase))
