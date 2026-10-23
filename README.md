@@ -2,7 +2,7 @@
 
 Unity 2022.3 LTS+ Editor tools for **Generals / Zero Hour** binary **W3D importing**, alongside **Tiberium Wars / Kane's Wrath** source **W3X** model/animation import and export.
 
-**Version 0.8.0 — experimental W3D importing, preserving W3X import/export.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
+**Version 0.8.1 — shared W3D/W3X Inspector tabs for Model, Rig, Animation and Material.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
 
 > W3D support is **import only**; this package is not a W3D exporter, game asset extractor or confirmed game-ready mod builder. Keep backups and validate with the game toolchain separately.
 
@@ -14,7 +14,21 @@ In Unity, select **Window > Package Manager > + > Add package from git URL**:
 https://github.com/MusafirEx/Unity-CnC-SAGE-Tools.git
 ```
 
-Git and Unity 2022.3 LTS or later are required. After updating a Git-based package, ensure Package Manager resolves **0.8.0** and scripts compile. Do not keep a duplicate installed copy under `Assets/`, or duplicate Editor assemblies may conflict.
+Git and Unity 2022.3 LTS or later are required. After updating a Git-based package, ensure Package Manager resolves **0.8.1** and scripts compile. Do not keep a duplicate installed copy under `Assets/`, or duplicate Editor assemblies may conflict.
+
+### Unified W3D / W3X Inspector (v0.8.1)
+
+Selecting a `.w3d` or `.w3x` **source file** in the Project window now opens the same four-tab read-only import Inspector:
+
+| Tab | Shows |
+|---|---|
+| **Model** | Actual imported mesh counts, geometry totals, renderer counts, UV presence and W3X declarations |
+| **Rig** | Imported `SAGE_Pivots` hierarchy, pivot counts, names and skinned renderer count |
+| **Animation** | Imported `AnimationClip` sub-assets, lengths, sample rates, legacy/Mecanim flag and selection actions |
+| **Material** | Imported materials, shader names and assigned primary texture references |
+
+The tabs inspect the **actual Unity-imported objects**, without reparsing game files, modifying import settings or changing the existing W3X exporters. Use **Refresh** after reimporting a file. The Model tab is not a mesh editor, the Rig tab is not Unity Avatar generation, and the Material tab does not extract textures from BIG archives. **This version is inspection-only**; no Apply/Revert controls are necessary until editable importer settings are introduced.
+
 
 ## Generals / Zero Hour — binary W3D import (new in 0.8.0)
 
