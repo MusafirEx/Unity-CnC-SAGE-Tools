@@ -20,12 +20,14 @@ namespace MusafirEx.CncSage.Editor
             { ".tga", ".dds", ".png", ".jpg", ".jpeg", ".bmp" };
 
         internal static void Build(AssetImportContext context, W3xDocument document,
-            GameObject root)
+            GameObject root, SageImportOptions options,
+            List<AnimationClip> importedClips)
         {
             W3xHierarchyData hierarchy = ChooseHierarchy(document);
             Transform[] pivots = BuildPivots(root.transform, hierarchy);
 
-            for (int i = 0; i < document.Meshes.Count; i++)
+            for (int i = 0; i < (options == null || options.importMeshes ?
+                document.Meshes.Count : 0); i++)
             {
                 W3xMeshData data = document.Meshes[i];
                 var part = new GameObject(data.Identifier);
@@ -166,8 +168,13 @@ namespace MusafirEx.CncSage.Editor
             // Phase 3A: store AnimationClips as independent W3X import
             // sub-assets. No Animation/Animator runtime component or
             // controller is generated; Phase 3B will add authoring tools.
-            W3xAnimationClipBuilder.Build(document, root, hierarchy, pivots,
-                (key, clip) => context.AddObjectToAsset(key, clip));
+            if (options == null || options.importAnimations)
+                W3xAnimationClipBuilder.Build(document, root, hierarchy, pivots,
+                    (key, clip) =>
+                    {
+                        context.AddObjectToAsset(key, clip);
+                        importedClips.Add(clip);
+                    });
         }
 
         private static W3xHierarchyData ChooseHierarchy(W3xDocument document)
