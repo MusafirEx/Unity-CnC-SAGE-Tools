@@ -18,6 +18,7 @@ namespace MusafirEx.CncSage.Editor
             internal readonly List<ModelNode> ModelNodes = new List<ModelNode>();
             internal HierarchyData Hierarchy;
             internal string ModelName;
+            internal string ModelHierarchyName;
         }
 
         internal sealed class MeshData
@@ -243,7 +244,12 @@ namespace MusafirEx.CncSage.Editor
             while (r.BaseStream.Position < parent.End)
             {
                 Chunk c = Next(r, parent.End);
-                if (c.Id == 0x032) mesh.Textures.Add(Name(r, (int)(c.End - c.Start)));
+                if (c.Id == 0x032)
+                {
+                    if (c.End - c.Start > 4096)
+                        throw new InvalidDataException("W3D texture name exceeds safe import limit.");
+                    mesh.Textures.Add(Name(r, (int)(c.End - c.Start)));
+                }
                 else if (c.Id == 0x04A && mesh.Uvs.Count == 0)
                 {
                     for (int i = Count(c, 8, MaxVertices, "UV coordinates"); i > 0; --i)
@@ -362,7 +368,7 @@ namespace MusafirEx.CncSage.Editor
                     Require(c, 36, "HModel header");
                     r.ReadUInt32();
                     file.ModelName = Name(r, 16);
-                    Name(r, 16); // hierarchy identifier
+                    file.ModelHierarchyName = Name(r, 16); // hierarchy identifier
                 }
                 else if (c.Id == 0x302 && c.End - c.Start >= 18)
                 {
