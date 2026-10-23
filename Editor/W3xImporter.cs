@@ -7,7 +7,7 @@ namespace MusafirEx.CncSage.Editor
 {
     /// <summary>
     /// W3X XML importer: meshes, source pivots, basic skin weights and materials.
-    /// Binary W3D remains unsupported. Phase 3A adds limited AnimationClip sub-assets.
+    /// Binary W3D is imported separately by W3dImporter. Phase 3A adds limited AnimationClip sub-assets.
     /// </summary>
     [ScriptedImporter(7, "w3x")]
     public sealed class W3xImporter : ScriptedImporter

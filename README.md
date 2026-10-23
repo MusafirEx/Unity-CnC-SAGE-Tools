@@ -1,10 +1,10 @@
 # Unity-CnC-SAGE-Tools
 
-Unity 2022.3 LTS+ Editor tools for **Command & Conquer: Tiberium Wars / Kane's Wrath** SAGE **source W3X XML** models and animations.
+Unity 2022.3 LTS+ Editor tools for **Generals / Zero Hour** binary **W3D importing**, alongside **Tiberium Wars / Kane's Wrath** source **W3X** model/animation import and export.
 
-**Version 0.7.4 — streamlined Unity Editor menus.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
+**Version 0.8.0 — experimental W3D importing, preserving W3X import/export.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
 
-> This is an experimental source W3X toolkit, **not** a compiled `.w3d` exporter or a confirmed game-ready mod builder. Keep backups and validate with the game toolchain separately.
+> W3D support is **import only**; this package is not a W3D exporter, game asset extractor or confirmed game-ready mod builder. Keep backups and validate with the game toolchain separately.
 
 ## Install / update
 
@@ -14,9 +14,26 @@ In Unity, select **Window > Package Manager > + > Add package from git URL**:
 https://github.com/MusafirEx/Unity-CnC-SAGE-Tools.git
 ```
 
-Git and Unity 2022.3 LTS or later are required. After updating a Git-based package, ensure Package Manager resolves **0.7.4** and scripts compile. Do not keep a duplicate installed copy under `Assets/`, or duplicate Editor assemblies may conflict.
+Git and Unity 2022.3 LTS or later are required. After updating a Git-based package, ensure Package Manager resolves **0.8.0** and scripts compile. Do not keep a duplicate installed copy under `Assets/`, or duplicate Editor assemblies may conflict.
 
-## Main workflow — import, edit, export animations
+## Generals / Zero Hour — binary W3D import (new in 0.8.0)
+
+**One Unity plugin, two formats.** Add .w3d files under Assets/ and Unity imports them automatically using a separate read-only importer. The existing W3X tool menus remain available.
+
+1. Extract legally obtained W3D files from your Generals / Zero Hour BIG archives and copy them into your Unity Assets folder.
+2. Put companion *_SKL.w3d files beside *_SKN.w3d or animation W3D files when available. Extract referenced textures to the same folder and import the images into Unity.
+3. Unity creates an imported GameObject; expand it for Mesh and basic uncompressed AnimationClip subassets. Pivot hierarchy is displayed under SAGE_Pivots.
+4. For standalone animations, use the generated legacy AnimationClip on a model with the same skeleton names and paths. Some models still require manual assembly.
+
+**Experimental support:** mesh geometry, triangle normals, primary UV coordinates, simple first-texture materials, pivot parenting, same-file HModel mesh attachment, one-bone vertex influences, uncompressed translation and quaternion animation channels, and same-directory skeleton lookup.
+
+**Not supported yet:** compressed animation, HLOD assembly across separate files, multi-weight skinning, full fixup matrices, exact Generals shaders/material passes, emitters, game BIG extraction or W3D export. Expect imperfect skinned model previews and manual setup for complex assets. Unsupported content should be reported in the Console where recognized.
+
+Try **Package Manager > Samples > Minimal W3D Import Test**, run the included Python generator, and inspect the generated W3D test assets in Unity. The generator uses no EA game content.
+
+See docs/W3DImporter.md for troubleshooting and test expectations.
+
+## Main workflow — import, edit, export W3X animations
 
 1. Place the **original uncompiled `.w3x`** animation and its companion hierarchy **`*_SKL.w3x`** and other relative sources together in their original directory under Unity `Assets/`. The importer creates `AnimationClip` sub-assets when the SAGE hierarchy resolves.
 2. Select the model and relevant animation assets in the **Project** window. Choose **Tools > C&C SAGE > Create Phase 3B Editable Animation Workspace**.
