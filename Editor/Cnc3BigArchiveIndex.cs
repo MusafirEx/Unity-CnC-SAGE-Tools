@@ -164,6 +164,54 @@ namespace MusafirEx.CncSage.Editor
             }
         }
 
+
+        /// <summary>
+        /// Bounded random-access read of an archive member. Uncompressed BIG
+        /// members are read by seeking directly into the original BIG file;
+        /// the entire WBData.bin is never loaded into memory. Compressed members
+        /// use the existing bounded RefPack decoder and are rejected if too big.
+        /// </summary>
+        internal static byte[] ReadMemberRange(Cnc3BigArchiveIndex archive,
+            Cnc3BigEntry entry, long relativeOffset, int length)
+        {
+            if (archive == null || entry == null || archive.entries == null ||
+                !archive.entries.Contains(entry) || !archive.IsCurrent)
+                throw new InvalidDataException("BIG archive/index is missing or stale.");
+            if (relativeOffset < 0 || length < 0 || length > 24 * 1024 * 1024)
+                throw new InvalidDataException("BIG requested slice exceeds the 24 MiB limit.");
+            if (entry.offset < archive.directoryBytes || entry.storedLength < 0 ||
+                entry.offset > archive.archiveLength ||
+                entry.storedLength > archive.archiveLength - entry.offset)
+                throw new InvalidDataException("BIG member's position is invalid.");
+            using (var file = File.Open(archive.archivePath,
+                FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                file.Position = entry.offset;
+                byte[] probe = new byte[(int)Math.Min(16L, entry.storedLength)];
+                ReadFully(file, probe, probe.Length);
+                if (Cnc3RefPack.IsRefPack(probe))
+                {
+                    if (entry.storedLength > MaxReadBytes)
+                        throw new InvalidDataException("Compressed BIG stream too large for bounded access.");
+                    byte[] inflated = ReadMember(archive, entry);
+                    if (relativeOffset > inflated.Length ||
+                        length > inflated.Length - relativeOffset)
+                        throw new InvalidDataException("BIG decoded slice outside member bounds.");
+                    var slice = new byte[length];
+                    Buffer.BlockCopy(inflated, checked((int)relativeOffset),
+                        slice, 0, length);
+                    return slice;
+                }
+                if (relativeOffset > entry.storedLength ||
+                    length > entry.storedLength - relativeOffset)
+                    throw new InvalidDataException("BIG slice outside member bounds.");
+                file.Position = entry.offset + relativeOffset;
+                byte[] result = new byte[length];
+                ReadFully(file, result, length);
+                return result;
+            }
+        }
+
         internal static void ExportMember(Cnc3BigArchiveIndex archive,
             Cnc3BigEntry entry, string destination)
         {
