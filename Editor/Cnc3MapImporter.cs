@@ -238,7 +238,9 @@ namespace MusafirEx.CncSage.Editor
                 Mathf.Approximately(vScale, 0.0390625f))
                 vScale = 0.625f;
 
-            Cnc3TerrainAtlasUv.Mapping atlasMapping;
+            // Definite assignment: TryMap() is short-circuited when atlas mode
+            // is disabled, so the out argument may never execute.
+            Cnc3TerrainAtlasUv.Mapping atlasMapping = null;
             string mappingProblem = "";
             bool useAtlas = applyAtlasToTerrain &&
                 Cnc3TerrainAtlasUv.TryMap(map, report, out atlasMapping, out mappingProblem);

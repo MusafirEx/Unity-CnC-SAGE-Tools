@@ -1,6 +1,6 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "displayName": "C&C SAGE Model Tools",
   "description": "Unity C&C SAGE W3X/W3D tooling with C&C3/KW map terrain, objects and automatic compiled atlas UV mapping.",
   "unity": "2022.3",
