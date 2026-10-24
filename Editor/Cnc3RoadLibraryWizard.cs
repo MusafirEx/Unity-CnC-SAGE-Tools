@@ -20,6 +20,12 @@ namespace MusafirEx.CncSage.Editor
         {
             var library = Selection.activeObject as Cnc3RoadLibrary;
             if (library == null) return;
+            EditorUtility.DisplayDialog("C&C SAGE Road Texture Matching",
+                AutoMatchRoadLibrary(library), "OK");
+        }
+
+        private static string AutoMatchRoadLibrary(Cnc3RoadLibrary library)
+        {
             string assetPath = AssetDatabase.GetAssetPath(library);
             var catalog = Cnc3RoadTextureCatalog.Create(assetPath, library, null);
             var warnings = new List<string>();
@@ -109,8 +115,7 @@ namespace MusafirEx.CncSage.Editor
                 (warnings.Count > 0 ? "\nParser: " +
                     string.Join("; ", warnings.ToArray()) : "");
             Debug.Log("[C&C SAGE ROADS] " + details);
-            EditorUtility.DisplayDialog("C&C SAGE Road Texture Matching",
-                details, "OK");
+            return details;
         }
 
         [MenuItem("Assets/C&C SAGE/Auto-Match Road Library Textures", true)]
@@ -208,6 +213,10 @@ namespace MusafirEx.CncSage.Editor
                 library.sourceDefinitions = textAsset;
                 EditorUtility.SetDirty(library);
                 attached++;
+                // One explicit installer click also resolves the original
+                // atlas filename and road widths into this existing asset.
+                // The helper preserves all manual Texture2D assignments.
+                AutoMatchRoadLibrary(library);
             }
             if (attached > 0)
                 AssetDatabase.SaveAssets();
