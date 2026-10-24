@@ -2,7 +2,7 @@
 
 Unity 2022.3 LTS+ Editor tools for **Generals / Zero Hour** binary **W3D importing**, alongside **Tiberium Wars / Kane's Wrath** source **W3X** model/animation import and export.
 
-**Version 0.9.5 — C&C3/Kane's Wrath `.map` terrain with compiled diffuse atlas and GPU two-way/three-way terrain texture blending, alongside W3D/W3X.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
+**Version 0.9.6 — C&C3/Kane's Wrath `.map` textured terrain, blending and standing-water previews, alongside W3D/W3X.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
 
 > W3D support is **import only**; this package is not a W3D exporter, game asset extractor or confirmed game-ready mod builder. Keep backups and validate with the game toolchain separately.
 
@@ -101,6 +101,24 @@ Version 0.9.3 imported the diffuse atlas and applied the **base** `BlendTileData
 **Still pending:** cliff texture mapping, detail/macro textures, lighting, decals, water, roads and base-stream W3D model resolution. Some edge transitions and terrain orientation may differ from World Builder until live Unity visual testing.
 
 See [the texture blending technical note](docs/Cnc3TerrainTextureBlending.md).
+
+## v0.9.6 — Source standing-water polygons (experimental)
+
+The real `eamap_sb05_4.map` has **no active cliff-texture grid cells** but does contain **two standing-water polygons**. This milestone therefore adds visible, editable source-water surfaces before tackling absent cliff examples.
+
+- Decode `StandingWaterAreas` v2 records directly from `.map` (unique ID, names, 2D polygon points, water height, UV scroll, additive-blend flag, bump/sky/FX/depth texture names), plus `GlobalWaterSettings` reflection flag/plane. The original map files are never modified.
+- Concave polygons are triangulated using bounded ear clipping, so water surfaces do not incorrectly fill land. Coordinates follow the same C&C3 → Unity scaling/optional north–south flip as other placed objects; water heights follow the terrain vertical scale.
+- Create `SAGE_WaterAreas` child GameObjects with mesh/material sub-assets. A package `MusafirEx/SAGE Water Preview` unlit transparent shader offers gentle procedural ripple animation. It is a **preview**, not original game reflection/bump/sky rendering.
+- Inspector offers **Import Standing Water**, **Water Tint**, **Water Scroll Multiplier** and **Water Preview Material**. Source metadata remains in `Cnc3MapManifest` even with water meshes disabled.
+- Built-in pipeline shader is used where available, with safe shader fallback. The existing textured, 2-way/3-way blended `SAGE_Terrain`, W3D and W3X tools remain unchanged.
+
+**Real-map target:** Standing-water area #1 has 11 points and SAGE water height 87; area #2 has 13 points and water height 40. Both polygons parse to the final byte of their 376-byte source section and successfully triangulate to 9 + 11 upward-facing mesh triangles (including north–south flip). The scene should display both surfaces at the source world coordinates.
+
+**Not yet done:** Original SAGE reflections, shoreline foam, original ripple bump and sky environment assets, river strips, waterfall effects, roads and cliff materials. In this map the source cliff overlay grid contains only zero values; a different sample map will be useful when developing cliffs.
+
+**Test:** Install `https://github.com/MusafirEx/Unity-CnC-SAGE-Tools.git#feature/cnc3-map-standing-water`, select `eamap_sb05_4.map` and Reimport with **Import Standing Water** enabled. Confirm `SAGE_WaterAreas` contains two child meshes and the Inspector shows **Water Meshes Created: 2**. Console compilation and runtime visual checks must be confirmed in Unity before merging.
+
+See [Standing water technical notes](docs/Cnc3StandingWater.md).
 
 ## Generals / Zero Hour — binary W3D import (new in 0.8.0)
 
