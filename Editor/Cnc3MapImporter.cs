@@ -162,6 +162,16 @@ namespace MusafirEx.CncSage.Editor
                     report.compiledManifestMatchesBin = linked.ManifestLinksBinary;
                     report.manifestAssetCount = linked.ManifestAssetCount;
                     report.manifestAssetsWithData = linked.ManifestAssetsWithData;
+                    report.compiledAtlasAssetName = linked.TerrainAtlasName;
+                    report.compiledAtlasLayoutVerified = linked.TerrainAtlasValidated;
+                    report.compiledAtlasTileCount = linked.AtlasTiles.Count;
+                    foreach (var tile in linked.AtlasTiles)
+                        report.compiledAtlasTiles.Add(new Cnc3AtlasTileEntry
+                        {
+                            textureId = tile.TextureId,
+                            x0 = tile.X0, y0 = tile.Y0,
+                            x1 = tile.X1, y1 = tile.Y1
+                        });
                     foreach (var asset in linked.Assets)
                     {
                         report.compiledAssets.Add(new Cnc3CompiledAssetEntry
@@ -428,6 +438,13 @@ namespace MusafirEx.CncSage.Editor
                         report.compiledMetadataBytes.ToString("N0") + " bytes");
                     EditorGUILayout.LabelField("DDS Atlases",
                         report.compiledTextureCount.ToString());
+                    EditorGUILayout.LabelField("Atlas Source Asset",
+                        string.IsNullOrEmpty(report.compiledAtlasAssetName)
+                            ? "Not identified" : report.compiledAtlasAssetName);
+                    EditorGUILayout.LabelField("Atlas Tile Table",
+                        report.compiledAtlasLayoutVerified
+                            ? report.compiledAtlasTileCount + " tile rectangles validated"
+                            : "Not validated");
                     EditorGUILayout.LabelField("Import Addresses",
                         report.compiledImportAddresses.ToString("N0"));
                     EditorGUILayout.LabelField("Relocation Addresses",
