@@ -78,12 +78,24 @@ namespace MusafirEx.CncSage.Editor
                 for (int j = 0; j < steps; j++)
                 {
                     int b = first + j * 2;
-                    accumulator.Triangles.Add(b);
-                    accumulator.Triangles.Add(b + 2);
-                    accumulator.Triangles.Add(b + 1);
-                    accumulator.Triangles.Add(b + 1);
-                    accumulator.Triangles.Add(b + 2);
-                    accumulator.Triangles.Add(b + 3);
+                    if (flipNorthSouth)
+                    {
+                        accumulator.Triangles.Add(b);
+                        accumulator.Triangles.Add(b + 1);
+                        accumulator.Triangles.Add(b + 2);
+                        accumulator.Triangles.Add(b + 1);
+                        accumulator.Triangles.Add(b + 3);
+                        accumulator.Triangles.Add(b + 2);
+                    }
+                    else
+                    {
+                        accumulator.Triangles.Add(b);
+                        accumulator.Triangles.Add(b + 2);
+                        accumulator.Triangles.Add(b + 1);
+                        accumulator.Triangles.Add(b + 1);
+                        accumulator.Triangles.Add(b + 2);
+                        accumulator.Triangles.Add(b + 3);
+                    }
                 }
                 accumulator.Segments++;
                 if (((start.RoadFlags | end.RoadFlags) & (8u | 64u)) != 0)
