@@ -2,7 +2,7 @@
 
 Unity 2022.3 LTS+ Editor tools for **Generals / Zero Hour** binary **W3D importing**, alongside **Tiberium Wars / Kane's Wrath** source **W3X** model/animation import and export.
 
-**Version 0.9.3 — C&C3/Kane's Wrath `.map` terrain with automatically assigned compiled `map.bin` diffuse atlas, alongside W3D/W3X.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
+**Version 0.9.5 — C&C3/Kane's Wrath `.map` terrain with compiled diffuse atlas and GPU two-way/three-way terrain texture blending, alongside W3D/W3X.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
 
 > W3D support is **import only**; this package is not a W3D exporter, game asset extractor or confirmed game-ready mod builder. Keep backups and validate with the game toolchain separately.
 
@@ -14,7 +14,7 @@ In Unity, select **Window > Package Manager > + > Add package from git URL**:
 https://github.com/MusafirEx/Unity-CnC-SAGE-Tools.git
 ```
 
-Git and Unity 2022.3 LTS or later are required. After updating a Git-based package, ensure Package Manager resolves **0.9.3** and scripts compile. Do not keep a duplicate installed copy under `Assets/`, or duplicate Editor assemblies may conflict.
+Git and Unity 2022.3 LTS or later are required. After updating a Git-based package, ensure Package Manager resolves **0.9.5** and scripts compile. Do not keep a duplicate installed copy under `Assets/`, or duplicate Editor assemblies may conflict.
 
 ### FBX-style shared W3D/W3X Inspector (v0.8.2)
 
@@ -85,6 +85,22 @@ v0.9.2 extracted the two DDS images but never assigned them to the terrain mater
 **Live test:** Update Unity Package Manager to v0.9.3 branch, select `eamap_sb05_4.map` and **Reimport**. Ensure `map.bin`, `map.manifest`, `map.imp`, `map.relo` are beside `.map`, and check Inspector **Apply Atlas To Terrain**. Expected Inspector: **Source Terrain Textures 43**, **Texture IDs Matched 43**, **Atlas Applied To Terrain Yes**. The Scene view terrain should now have varied grass, road and dirt base textures. This update is not yet Unity-compiled/play-tested by the assistant; verify Console before merging.
 
 Technical detail: [Terrain Atlas UV Mapping](docs/Cnc3TerrainAtlasMapping.md).
+
+## v0.9.5 — Terrain texture blending (experimental)
+
+Version 0.9.3 imported the diffuse atlas and applied the **base** `BlendTileData.Tiles` texture to each source cell. It did not render `Blends` or `ThreeWayBlends`, so texture transitions looked hard-edged.
+
+**New:** parse the map's versioned 16-/32-bit blend grids and 18-byte blend descriptions (secondary tile index, blend direction, flipped flag and corner two-sided flag); preserve C&C 3 v24 layout. A bundled `Shaders/Cnc3TerrainAtlasBlend.shader` samples the **same diffuse atlas three times per pixel**, mixing base→secondary→tertiary with the direction rules from OpenSAGE's terrain shader.
+
+**Unity workflow:** import/update the package using the feature branch, then reimport `eamap_sb05_4.map`. In the `.map` Inspector enable **Apply Atlas To Terrain** and **Render Terrain Blending** (both enabled by default). The shader is automatically used for the generated terrain material when available; no material or atlas dragging is needed.
+
+**Expected source counts for `eamap_sb05_4.map`:** 330,400 tile cells; 16,672 blend descriptions; 64,782 cells with a first blending layer; 4,536 cells with a third blending layer; 43/43 texture names resolved against compiled atlas tile IDs. The imported Inspector displays each count and whether the blend shader was applied.
+
+**Fallback:** If `map.bin`, the compiled manifest, `BlendTileData` or a supported blend shader is missing, the existing base-atlas (or untextured) terrain path remains available. The shader is unlit and intended for preview rather than reproducing SAGE lighting, shadows or macro-noise.
+
+**Still pending:** cliff texture mapping, detail/macro textures, lighting, decals, water, roads and base-stream W3D model resolution. Some edge transitions and terrain orientation may differ from World Builder until live Unity visual testing.
+
+See [the texture blending technical note](docs/Cnc3TerrainTextureBlending.md).
 
 ## Generals / Zero Hour — binary W3D import (new in 0.8.0)
 
