@@ -1,15 +1,18 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Unity C&C SAGE source W3X tools and binary W3D importer with FBX-style Model/Rig/Animation/Material settings.",
+  "description": "Unity C&C SAGE importer for W3X, W3D and experimental C&C3/Kane's Wrath terrain .map previews.",
   "unity": "2022.3",
   "keywords": [
     "command and conquer",
     "sage",
     "w3x",
     "w3d",
-    "modding"
+    "modding",
+    "world builder",
+    "terrain",
+    "maps"
   ],
   "author": {
     "name": "Musafir Ex"
@@ -24,6 +27,11 @@
       "displayName": "Minimal W3D Import Test",
       "description": "Generate a small synthetic W3D model and animation to verify the importer.",
       "path": "Samples~/MinimalW3D"
+    },
+    {
+      "displayName": "Minimal C&C3 Map",
+      "description": "Synthetic uncompressed and EA RefPack terrain map fixtures (requires Python 3 to generate).",
+      "path": "Samples~/MinimalCnc3Map"
     }
   ]
 }

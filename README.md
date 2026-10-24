@@ -2,7 +2,7 @@
 
 Unity 2022.3 LTS+ Editor tools for **Generals / Zero Hour** binary **W3D importing**, alongside **Tiberium Wars / Kane's Wrath** source **W3X** model/animation import and export.
 
-**Version 0.8.2 — FBX-style editable Model/Rig/Animation/Material Inspector, based on Bress2Unity's Unity importer.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
+**Version 0.9.0 — experimental C&C 3 / Kane's Wrath World Builder `.map` terrain preview importer, alongside the existing W3D and W3X pipelines.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
 
 > W3D support is **import only**; this package is not a W3D exporter, game asset extractor or confirmed game-ready mod builder. Keep backups and validate with the game toolchain separately.
 
@@ -14,7 +14,7 @@ In Unity, select **Window > Package Manager > + > Add package from git URL**:
 https://github.com/MusafirEx/Unity-CnC-SAGE-Tools.git
 ```
 
-Git and Unity 2022.3 LTS or later are required. After updating a Git-based package, ensure Package Manager resolves **0.8.2** and scripts compile. Do not keep a duplicate installed copy under `Assets/`, or duplicate Editor assemblies may conflict.
+Git and Unity 2022.3 LTS or later are required. After updating a Git-based package, ensure Package Manager resolves **0.9.0** and scripts compile. Do not keep a duplicate installed copy under `Assets/`, or duplicate Editor assemblies may conflict.
 
 ### FBX-style shared W3D/W3X Inspector (v0.8.2)
 
@@ -34,6 +34,26 @@ The package now follows the **Bress2Unity** `BrresImporterEditor` design: select
 **Scope:** Generic Avatars are experimental and may require a valid matched SAGE pivot hierarchy; Humanoid retargeting is not implemented. W3D compressed animations, distributed HLOD assembly and advanced multipass shaders remain unsupported. Source W3D/W3X files and existing W3X exporters are not changed by importer Inspector settings.
 
 **Reference:** [Bress2Unity's importer Inspector](https://github.com/MusafirEx/Bress2Unity/blob/main/Packages/com.musafirex.chr0-to-unity/Editor/BRRES/BrresImporterEditor.cs).
+
+## C&C 3 / Kane's Wrath — .map terrain importer (0.9.0, experimental)
+
+Select a C&C 3 World Builder `.map` file in the Unity Project window to import it automatically into a **GameObject** with **SAGE_Terrain** and tiled Unity **Mesh** sub-assets. This is an **import-only terrain preview**, not a World Builder replacement.
+
+**Supported initially**
+- Detects uncompressed `CkMp` and EA `EAR\0` + RefPack-compressed map streams.
+- Reads the map's name-index table, section headers and **HeightMapData** elevations with bounds validation.
+- Builds 64×64-cell terrain mesh tiles with upward-facing normals and preview UVs.
+- Uses the C&C 3 height grid defaults (**10 SAGE units per horizontal cell**, **0.0390625 height units per 16-bit sample**), subject to adjustable Inspector settings.
+- Shows map dimensions, border, heightmap version, compression type and number of section records.
+- Inspector settings for importing terrain, horizontal/vertical scale, north-south flip, playable border, optional mesh colliders, and preview material; select **Apply** to reimport.
+
+**Currently unavailable:** object placements, terrain-texture blending, roads, water areas, lighting, scripts, AI and gameplay. Names of other top-level sections are indexed, but their binary payloads are not decoded. Actual game models and textures are referenced by map data, not embedded as reusable Unity meshes; this plugin doesn't extract them from BIG archives. Terrain geometry only is generated until further development.
+
+**Sample test:** Import the Package Manager sample **Minimal C&C3 Map**, run `python generate_map_samples.py` from its folder (Python 3 stdlib), then let Unity refresh. `SageTerrainSynthetic.map`, `SageTerrainSyntheticCompressed.map` and `SageTerrainSyntheticBackrefs.map` should each import one 12×10 sample-grid terrain with a raised hill. Both are synthetic test files, not original EA maps.
+
+**Real map test:** Extract an authentic C&C 3 `.map` from your installed game or export a simple one from World Builder and place it under `Assets/Maps/`. Inspect the generated **SAGE_Terrain** and Unity Console warnings; keep the map's companion files together for later stages. The first importer has not yet been validated on real game maps and might need format-specific adjustments.
+
+See [C&C 3 map importer technical notes](docs/Cnc3MapImporter.md).
 
 ## Generals / Zero Hour — binary W3D import (new in 0.8.0)
 
