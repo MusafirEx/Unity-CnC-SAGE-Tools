@@ -2,7 +2,7 @@
 
 Unity 2022.3 LTS+ Editor tools for **Generals / Zero Hour** binary **W3D importing**, alongside **Tiberium Wars / Kane's Wrath** source **W3X** model/animation import and export.
 
-**Version 0.9.2 — C&C3/Kane's Wrath `.map` Mode 1 plus optional compiled `map.bin` DDS texture atlas import, alongside W3D/W3X.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
+**Version 0.9.3 — C&C3/Kane's Wrath `.map` terrain with automatically assigned compiled `map.bin` diffuse atlas, alongside W3D/W3X.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
 
 > W3D support is **import only**; this package is not a W3D exporter, game asset extractor or confirmed game-ready mod builder. Keep backups and validate with the game toolchain separately.
 
@@ -14,7 +14,7 @@ In Unity, select **Window > Package Manager > + > Add package from git URL**:
 https://github.com/MusafirEx/Unity-CnC-SAGE-Tools.git
 ```
 
-Git and Unity 2022.3 LTS or later are required. After updating a Git-based package, ensure Package Manager resolves **0.9.2** and scripts compile. Do not keep a duplicate installed copy under `Assets/`, or duplicate Editor assemblies may conflict.
+Git and Unity 2022.3 LTS or later are required. After updating a Git-based package, ensure Package Manager resolves **0.9.3** and scripts compile. Do not keep a duplicate installed copy under `Assets/`, or duplicate Editor assemblies may conflict.
 
 ### FBX-style shared W3D/W3X Inspector (v0.8.2)
 
@@ -68,6 +68,23 @@ Place the C&C3 World Builder `.map` file beside `map.bin` (optional) in the **sa
 **Validated source fixture `eamap_sb05_4`:** 17,055,700-byte `map.bin`; 966 version-5 manifest assets (25 include binary bodies), 43 terrain atlas tiles; 293,968-byte pre-DDS binary region; DXT5/BC3 2048×2048 atlas at `0x00047C50` (5,587,072 bytes incl. DDS+mips); RGB555 2048×2048 atlas at `0x0059BCD0` (11,174,016 bytes incl. DDS+mips); 2,483 `.imp` addresses, 6,831 primary `.relo` addresses, 142 `GameObject:` names and 131 `Texture:` names in manifest. *These byte-level values were verified against the user's original files.*
 
 **Unity acceptance test:** update the Git package, select/reimport `eamap_sb05_4.map`, confirm two generated Texture2D sub-assets in the expanded `.map`, open them to inspect the atlas previews, and read the Mode 2 Inspector section and Console. No Unity compile or Editor import success is claimed until that real test passes.
+
+## v0.9.3 — Fix: compiled atlas now appears on terrain
+
+v0.9.2 extracted the two DDS images but never assigned them to the terrain material and used UVs covering the full map. This fix connects the *source map* `BlendTileData` base texture tiles to their compiled atlas locations.
+
+- Decodes `BlendTileData` (v6+, including verified C&C3 v24): per-cell ushort tile indices and the texture name/CellSize table, skipping unrelated packed passability/blend tables within their validated bounds.
+- Computes each source name's **lowercase SAGE FastHash** and looks it up against the 12-byte per-texture tile descriptors in `TerrainTextureAtlas:EAMAP_SB05_4`. Source `eamap_sb05_4` maps **all 43/43 source textures**.
+- Converts each source tile's Morton-ordered 32×32 atlas subtile into quad-specific UVs, including the DDS-to-Unity V orientation. Unity terrain patches have separate cell vertices so discontinuous atlas UVs cannot be shared incorrectly.
+- The importer now loads the compiled bundle **before constructing terrain**. When `Apply Atlas To Terrain` is enabled (default), a compatible `CNC3_Terrain_Preview` material receives the base-color DXT5 `Texture2D` automatically. A supplied external material is cloned rather than modified.
+- Supports Built-in and URP/HDRP shader selection where matching shaders exist; atlas UV vertex normals are smoothed using heightfield neighbors; mesh colliders remain available.
+- **Mode 1 fallback:** maps with no `map.bin`, missing atlas tile table or missing source BlendTileData still import the untextured terrain and object markers. Inspector displays texture count, matched IDs and a clear reason if atlas could not be applied.
+
+**Important limitation:** this v0.9.3 implementation displays the **base terrain tile texture**. It does not yet reconstruct second/third texture blend masks, cliff blends, terrain macro-texture, or dynamic details. Transitions may have visible seams; resolving precise SAGE blending is a separate next stage.
+
+**Live test:** Update Unity Package Manager to v0.9.3 branch, select `eamap_sb05_4.map` and **Reimport**. Ensure `map.bin`, `map.manifest`, `map.imp`, `map.relo` are beside `.map`, and check Inspector **Apply Atlas To Terrain**. Expected Inspector: **Source Terrain Textures 43**, **Texture IDs Matched 43**, **Atlas Applied To Terrain Yes**. The Scene view terrain should now have varied grass, road and dirt base textures. This update is not yet Unity-compiled/play-tested by the assistant; verify Console before merging.
+
+Technical detail: [Terrain Atlas UV Mapping](docs/Cnc3TerrainAtlasMapping.md).
 
 ## Generals / Zero Hour — binary W3D import (new in 0.8.0)
 

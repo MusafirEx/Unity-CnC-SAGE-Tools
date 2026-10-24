@@ -12,6 +12,15 @@ namespace MusafirEx.CncSage.Editor
     /// </summary>
     internal static class Cnc3MapReader
     {
+        internal sealed class TerrainTexture
+        {
+            internal string Name;
+            internal uint TextureId;
+            internal int TileStart;
+            internal int TileCount;
+            internal int TileWidth;
+        }
+
         internal sealed class ObjectData
         {
             internal string TypeName;
@@ -30,6 +39,8 @@ namespace MusafirEx.CncSage.Editor
             internal int Border;
             internal ushort HeightmapVersion;
             internal ushort[] Elevations;
+            internal ushort[] TileValues;
+            internal readonly List<TerrainTexture> TerrainTextures = new List<TerrainTexture>();
             internal bool Compressed;
             internal readonly List<ObjectData> Objects = new List<ObjectData>();
             internal readonly List<string> SectionNames = new List<string>();
@@ -101,6 +112,10 @@ namespace MusafirEx.CncSage.Editor
                             throw new InvalidDataException("Map contains duplicate HeightMapData sections.");
                         ReadHeights(reader, stop, version, result);
                     }
+                    else if (name == "BlendTileData")
+                    {
+                        ReadTerrainTextureData(reader, stop, version, result);
+                    }
                     else if (name == "ObjectsList")
                     {
                         ReadObjects(reader, stop, names, result);
@@ -111,11 +126,151 @@ namespace MusafirEx.CncSage.Editor
             if (result.Elevations == null)
                 throw new InvalidDataException("C&C map has no HeightMapData section.");
             if (result.SectionNames.Count > 1)
-                result.Warnings.Add("Mode 1 imports terrain and object placement markers only. " +
-                    "Object meshes, roads, tile blending, lighting, water and scripts are not reconstructed.");
+                result.Warnings.Add("Map terrain and object placements decoded. Detailed roads, " +
+                    "secondary/three-way texture blending, water and scripts remain experimental.");
             return result;
         }
 
+
+        private static void ReadTerrainTextureData(BinaryReader reader, long stop,
+            ushort version, Data output)
+        {
+            if (output.Elevations == null || version < 6)
+            {
+                output.Warnings.Add("BlendTileData encountered before terrain or has an unsupported version.");
+                return;
+            }
+            int width = output.Width, height = output.Height;
+            int count = checked(width * height);
+            Stream stream = reader.BaseStream;
+            if (stream.Position + 4L + count * 2L > stop)
+                throw new InvalidDataException("BlendTileData has an invalid terrain grid.");
+            if (reader.ReadUInt32() != count)
+                throw new InvalidDataException("BlendTileData cell count differs from HeightMapData.");
+            var tiles = new ushort[count];
+            for (int i = 0; i < count; i++)
+                tiles[i] = reader.ReadUInt16();
+
+            // Three per-cell grids: blend, three-way-blend and cliff texture.
+            // The C&C 3 version-24 grid stores 16-bit values.
+            int bits = version >= 14 && version < 24 ? 32 : 16;
+            SkipTerrainBytes(stream, stop, (long)count * (bits / 8) * 3);
+            int rowBits = ((width + 7) / 8) * height;
+            if (version > 6)
+            {
+                int bitWidth = version == 7 ? ((width + 1) / 8) * 8 : width;
+                SkipTerrainBytes(stream, stop, ((bitWidth + 7) / 8) * (long)height);
+            }
+            if (version >= 10) SkipTerrainBytes(stream, stop, rowBits);
+            if (version >= 11) SkipTerrainBytes(stream, stop, rowBits);
+            if (version >= 14 && version < 25) SkipTerrainBytes(stream, stop, rowBits);
+            if (version >= 15) SkipTerrainBytes(stream, stop, rowBits);
+            if (version >= 16 && version < 25) SkipTerrainBytes(stream, stop, count);
+            if (version >= 17) SkipTerrainBytes(stream, stop, rowBits);
+            if (version >= 24)
+                SkipTerrainBytes(stream, stop, rowBits * 3L);
+            if (version >= 25) SkipTerrainBytes(stream, stop, count);
+
+            if (stop - stream.Position < 16)
+                throw new InvalidDataException("BlendTileData texture index header is truncated.");
+            uint textureCellCount = reader.ReadUInt32();
+            reader.ReadUInt32(); // blend descriptions count
+            reader.ReadUInt32(); // cliff mapping count
+            uint textureCount = reader.ReadUInt32();
+            if (textureCount < 1 || textureCount > 2048)
+            {
+                output.Warnings.Add("BlendTileData has no usable texture name table.");
+                return;
+            }
+            int tilesIndexed = 0;
+            for (int i = 0; i < textureCount; i++)
+            {
+                if (stop - stream.Position < 18)
+                    throw new InvalidDataException("Truncated BlendTileTexture record.");
+                uint cellStart = reader.ReadUInt32();
+                uint cellCount = reader.ReadUInt32();
+                uint cellSize = reader.ReadUInt32();
+                uint magic = reader.ReadUInt32();
+                ushort nameLength = reader.ReadUInt16();
+                if (nameLength == 0 || nameLength > 512 ||
+                    nameLength > stop - stream.Position ||
+                    cellSize < 1 || cellSize > 128 ||
+                    cellSize * cellSize != cellCount || magic != 0)
+                    throw new InvalidDataException("Invalid BlendTileTexture metadata.");
+                string name = Encoding.ASCII.GetString(reader.ReadBytes(nameLength));
+                int side = checked((int)(cellSize * 2));
+                int span = checked(side * side);
+                output.TerrainTextures.Add(new TerrainTexture
+                {
+                    Name = name,
+                    TextureId = SageTerrainHash(name),
+                    TileStart = tilesIndexed,
+                    TileCount = span,
+                    TileWidth = side
+                });
+                tilesIndexed = checked(tilesIndexed + span);
+            }
+            if (textureCellCount < textureCount || tilesIndexed > ushort.MaxValue + 1)
+                throw new InvalidDataException("BlendTileData texture index table is corrupt.");
+            foreach (ushort tile in tiles)
+                if (tile >= tilesIndexed)
+                    throw new InvalidDataException("A terrain cell references an unknown tile.");
+            output.TileValues = tiles;
+        }
+
+        private static void SkipTerrainBytes(Stream stream, long limit, long length)
+        {
+            if (length < 0 || length > limit - stream.Position)
+                throw new InvalidDataException("Truncated BlendTileData packed grid.");
+            stream.Position += length;
+        }
+
+        // SAGE FastHash, case-insensitive string-ID form. Verified against
+        // all 43 source texture names and their compiled atlas TextureIDs.
+        internal static uint SageTerrainHash(string name)
+        {
+            byte[] bytes = Encoding.ASCII.GetBytes(name.ToLowerInvariant());
+            uint hash = (uint)bytes.Length;
+            int at = 0;
+            int remaining = bytes.Length;
+            unchecked
+            {
+                while (remaining >= 4)
+                {
+                    hash += (uint)(bytes[at] | bytes[at + 1] << 8);
+                    uint high = (uint)(bytes[at + 2] | bytes[at + 3] << 8);
+                    hash ^= (high ^ (hash << 5)) << 11;
+                    hash += hash >> 11;
+                    at += 4;
+                    remaining -= 4;
+                }
+                if (remaining == 1)
+                {
+                    hash += bytes[at];
+                    hash ^= hash << 10;
+                    hash += hash >> 1;
+                }
+                else if (remaining == 2)
+                {
+                    hash += (uint)(bytes[at] | bytes[at + 1] << 8);
+                    hash ^= hash << 11;
+                    hash += hash >> 17;
+                }
+                else if (remaining == 3)
+                {
+                    hash += (uint)(bytes[at] | bytes[at + 1] << 8);
+                    hash ^= hash << 16;
+                    hash ^= (uint)bytes[at + 2] << 18;
+                    hash += hash >> 11;
+                }
+                hash ^= hash << 3;
+                hash += hash >> 5;
+                hash ^= hash << 2;
+                hash += hash >> 15;
+                hash ^= hash << 10;
+            }
+            return hash;
+        }
 
         private static void ReadObjects(BinaryReader reader, long sectionEnd,
             Dictionary<uint, string> names, Data output)
