@@ -2,7 +2,7 @@
 
 Unity 2022.3 LTS+ Editor tools for **Generals / Zero Hour** binary **W3D importing**, alongside **Tiberium Wars / Kane's Wrath** source **W3X** model/animation import and export.
 
-**Version 0.9.8 — C&C3/KW source-map road previews, cliff mapping and terrain-lighting presets, plus terrain/blending/water.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
+**Version 0.9.9 — C&C3/KW Phase 5A connected road surfaces and optional original road atlas templates, plus terrain/blending/water.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
 
 > W3D support is **import only**; this package is not a W3D exporter, game asset extractor or confirmed game-ready mod builder. Keep backups and validate with the game toolchain separately.
 
@@ -146,6 +146,18 @@ This milestone adds three optional source-map features. Existing diffuse atlas, 
 The toggles default to OFF to preserve previously validated terrain appearance. After installing this branch, select the `.map`, enable an option and Reimport. The Inspector reports the source road count, active cliff cells and lighting preset.
 
 Technical background and visual test checklist: [Roads, cliffs and terrain lighting](docs/Cnc3TerrainRoadsCliffsLighting.md). **Unity compilation and shader rendering are pending live tests.**
+
+## Phase 5A (v0.9.9) — connected road network surfaces and source road atlas
+
+Roads have been upgraded beyond Phase 4 straight alignment guides. The optional **Import Road Surfaces** path identifies same-type connected nodes across source `ObjectsList` Start/End pairs, builds terrain-following meshes with **degree-2 miter joins** and **provisional** degree-3/4 crossing pads, and groups all meshes by original road `TypeName`.
+
+Important: the `.map` does not carry the complete original road-width definitions or TGA/DDS road texture assets. We therefore introduced a separate `Cnc3RoadLibrary` asset. Use the Project menu **Assets → C&C SAGE → Create Road Library From Map** to generate a per-map library of all road names. Its initial widths are explicitly approximate; replace with original RoadWidth and RoadWidthInTexture values and link original textures. The importer also accepts optional source Roads.ini or simple Road/RoadTemplate XML as a TextAsset, and searches exact texture basenames in your chosen **Road Texture Folder**.
+
+The `MusafirEx/SAGE Road Atlas` shader samples repeating straight road strips from the original 3×3 atlas. Three-/four-way pads use provisional intersection tiles and are **not yet full fidelity**. Final broad/tight curves, crossing orientation, Y/T variants, multi-type endcaps and accurate source materials are Phase 5B. The previous `Import Road Guides` option is retained as a fallback; disable it to avoid duplicate geometry.
+
+The new **Import Road Surfaces** option is OFF by default. In sample `eamap_sb05_4.map`, the verified network has **1,110 segments across 13 types**, **680 two-way junctions**, **52 three-way crossings** and zero four-way crossings. The resulting Unity meshes and shader still require live Editor validation.
+
+See [Phase 5A technical guide](docs/Cnc3Phase5RoadSurfaces.md).
 
 ## Generals / Zero Hour — binary W3D import (new in 0.8.0)
 
