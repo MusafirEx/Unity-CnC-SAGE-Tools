@@ -57,7 +57,7 @@ namespace MusafirEx.CncSage.Editor
         }
 
         internal bool TryResolve(string roadType, string declaredTexture,
-            out Texture2D texture, out string matchSource)
+            bool allowRoadTypeFallback, out Texture2D texture, out string matchSource)
         {
             texture = null;
             matchSource = "Not found";
@@ -66,6 +66,14 @@ namespace MusafirEx.CncSage.Editor
             {
                 matchSource = "Original texture name";
                 return true;
+            }
+
+            if (!allowRoadTypeFallback)
+            {
+                matchSource = string.IsNullOrEmpty(declared)
+                    ? "No declared original texture filename"
+                    : "Missing declared texture: " + declared;
+                return false;
             }
 
             // A filename equal to source MapObject.TypeName is a *candidate*.
