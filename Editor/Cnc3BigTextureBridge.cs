@@ -113,7 +113,7 @@ namespace MusafirEx.CncSage.Editor
             }
         }
 
-        private static Texture2D ReadDDS(byte[] file)
+        internal static Texture2D ReadDDS(byte[] file)
         {
             // Classic DDS header + BC1 or BC3. DX10, BC7, 3D and cube-map
             // variants are explicitly unsupported for now.
