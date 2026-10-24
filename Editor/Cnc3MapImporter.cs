@@ -12,7 +12,7 @@ namespace MusafirEx.CncSage.Editor
     /// First-pass C&C 3 / Kane's Wrath World Builder .map importer.
     /// Source map remains untouched. Mode 1: terrain and source object placeholders.
     /// </summary>
-    [ScriptedImporter(2, "map")]
+    [ScriptedImporter(3, "map")]
     public sealed class Cnc3MapImporter : ScriptedImporter
     {
         [Tooltip("Reconstruct HeightMapData as tiled, editable Unity mesh sub-assets.")]
@@ -47,6 +47,13 @@ namespace MusafirEx.CncSage.Editor
 
         [Tooltip("Optional material for preview terrain. This does not resolve game textures.")]
         public Material terrainMaterial;
+
+        [Header("Mode 2 - Optional Compiled Map Assets")]
+        [Tooltip("Decode supported DDS atlases from map.bin in the same folder. Does not load compiled models.")]
+        public bool importCompiledAtlases = true;
+
+        [Tooltip("Validate map.imp, map.relo and map.manifest against map.bin without interpreting opaque asset bodies.")]
+        public bool inspectCompiledIndexes = true;
 
         public override void OnImportAsset(AssetImportContext context)
         {
@@ -86,6 +93,8 @@ namespace MusafirEx.CncSage.Editor
                 BuildTerrain(context, root, map, report);
             if (importObjects)
                 report.objectMarkerCount = BuildObjectPlaceholders(root, map);
+            if (importCompiledAtlases || inspectCompiledIndexes)
+                ImportCompiledAssets(context, report);
 
             foreach (string warning in map.Warnings)
                 Debug.LogWarning("[C&C SAGE MAP] " + context.assetPath + ": " + warning);
@@ -93,6 +102,118 @@ namespace MusafirEx.CncSage.Editor
                 map.Width + "x" + map.Height + " points, " + report.tileCount +
                 " terrain meshes, " + map.Objects.Count +
                 " source object placements (" + (importObjects ? "created" : "metadata only") + ").");
+        }
+
+
+        private void ImportCompiledAssets(AssetImportContext context,
+            Cnc3MapManifest report)
+        {
+            string folder = Path.GetDirectoryName(context.assetPath);
+            if (string.IsNullOrEmpty(folder)) return;
+            string compiledPath = Path.Combine(folder, "map.bin").Replace('\\', '/');
+            if (!File.Exists(compiledPath))
+            {
+                report.compiledImportNote = "No map.bin beside source .map (optional).";
+                return;
+            }
+            context.DependsOnSourceAsset(compiledPath);
+
+            try
+            {
+                Cnc3CompiledMapReader.Result compiled =
+                    Cnc3CompiledMapReader.Read(compiledPath, importCompiledAtlases);
+                report.hasCompiledBin = true;
+                report.compiledBinSize = compiled.BinarySize;
+                report.compiledMetadataBytes = compiled.MetadataBytes;
+                report.compiledTextureCount = compiled.Images.Count;
+                for (int i = 0; i < compiled.Images.Count; i++)
+                {
+                    var image = compiled.Images[i];
+                    if (image.Texture != null)
+                        context.AddObjectToAsset("CNC3_CompiledAtlas_" + i, image.Texture);
+                    report.compiledTextures.Add(new Cnc3CompiledTextureEntry
+                    {
+                        name = image.Texture != null ? image.Texture.name
+                            : "Atlas_" + image.Offset.ToString("X8"),
+                        format = image.Format,
+                        width = image.Width,
+                        height = image.Height,
+                        mipCount = image.Mips,
+                        offset = image.Offset,
+                        length = image.Length,
+                        texture = image.Texture
+                    });
+                }
+
+                if (inspectCompiledIndexes)
+                {
+                    string[] companions = { "map.imp", "map.relo", "map.manifest" };
+                    foreach (string filename in companions)
+                    {
+                        string sibling = Path.Combine(folder, filename).Replace('\\', '/');
+                        if (File.Exists(sibling))
+                            context.DependsOnSourceAsset(sibling);
+                    }
+                    var linked = Cnc3CompiledMapBundle.Inspect(folder, compiled.BinarySize);
+                    report.compiledImportAddresses = linked.ImportAddresses;
+                    report.compiledRelocationAddresses = linked.RelocationAddresses;
+                    report.manifestGameObjectNames = linked.ManifestGameObjects;
+                    report.manifestTextureNames = linked.ManifestTextures;
+                    report.compiledManifestMatchesBin = linked.ManifestLinksBinary;
+                    report.manifestAssetCount = linked.ManifestAssetCount;
+                    report.manifestAssetsWithData = linked.ManifestAssetsWithData;
+                    report.compiledAtlasAssetName = linked.TerrainAtlasName;
+                    report.compiledAtlasLayoutVerified = linked.TerrainAtlasValidated;
+                    report.compiledAtlasTileCount = linked.AtlasTiles.Count;
+                    foreach (var tile in linked.AtlasTiles)
+                        report.compiledAtlasTiles.Add(new Cnc3AtlasTileEntry
+                        {
+                            textureId = tile.TextureId,
+                            x0 = tile.X0, y0 = tile.Y0,
+                            x1 = tile.X1, y1 = tile.Y1
+                        });
+                    foreach (var asset in linked.Assets)
+                    {
+                        report.compiledAssets.Add(new Cnc3CompiledAssetEntry
+                        {
+                            assetName = asset.Name,
+                            sourceFile = asset.Source,
+                            typeId = asset.TypeId,
+                            instanceId = asset.InstanceId,
+                            binaryOffset = asset.BinaryOffset,
+                            binaryLength = asset.BinaryLength,
+                            importOffset = asset.ImportOffset,
+                            importLength = asset.ImportLength,
+                            relocationOffset = asset.RelocationOffset,
+                            relocationLength = asset.RelocationLength,
+                            referenceCount = asset.ReferenceCount
+                        });
+                    }
+                    foreach (var atlas in report.compiledTextures)
+                        atlas.ownerAsset = linked.FindOwner(atlas.offset);
+                    foreach (string warning in linked.Warnings)
+                        Debug.LogWarning("[C&C SAGE BIN] " + warning);
+                }
+
+                foreach (string warning in compiled.Warnings)
+                    Debug.LogWarning("[C&C SAGE BIN] " + warning);
+                report.compiledImportNote = "Compiled resources indexed. " +
+                    compiled.Images.Count + " DDS atlas(es) found; " +
+                    (importCompiledAtlases ? "textures decoded." : "texture creation disabled.");
+                Debug.Log("[C&C SAGE BIN] " + context.assetPath + ": " +
+                    compiled.Images.Count + " atlas(es), " +
+                    report.compiledImportAddresses + " import addresses and " +
+                    report.compiledRelocationAddresses + " relocation addresses.");
+            }
+            catch (Exception exception)
+            {
+                // Compiled resources remain optional. Never fail the source
+                // terrain/placements when a sibling .bin is unsupported.
+                report.compiledImportNote = "Compiled resource parsing failed: " +
+                    exception.Message;
+                Debug.LogWarning("[C&C SAGE BIN] " + context.assetPath +
+                    ": " + report.compiledImportNote);
+            }
         }
 
         private void BuildTerrain(AssetImportContext context, GameObject root,
@@ -270,9 +391,10 @@ namespace MusafirEx.CncSage.Editor
         {
             serializedObject.Update();
             EditorGUILayout.LabelField("C&C 3 World Builder Map", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Mode 1: imports the source terrain and object transform " +
-                "placeholders only. No external .bin/.imp/.manifest/.relo files are required. " +
-                "Detailed object models, roads, materials, water and scripts are not built.", MessageType.Info);
+            EditorGUILayout.HelpBox("Mode 1 imports .map terrain and object markers. " +
+                "Mode 2 optionally finds compiled map.bin / map.imp / map.relo / map.manifest " +
+                "and extracts supported embedded atlases. Compiled W3D meshes, true terrain " +
+                "blending and object material mappings are not yet reconstructed.", MessageType.Info);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("importTerrain"),
                 new GUIContent("Import Terrain"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("horizontalScale"));
@@ -284,6 +406,10 @@ namespace MusafirEx.CncSage.Editor
             EditorGUILayout.PropertyField(serializedObject.FindProperty("maxObjectPlaceholders"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("addMeshColliders"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("terrainMaterial"));
+            EditorGUILayout.Space(8f);
+            EditorGUILayout.LabelField("Mode 2 — Compiled Map BIN", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("importCompiledAtlases"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("inspectCompiledIndexes"));
 
             var importer = target as Cnc3MapImporter;
             if (importer != null)
@@ -304,6 +430,64 @@ namespace MusafirEx.CncSage.Editor
                     EditorGUILayout.LabelField("Distinct Object Types", report.distinctObjectTypes.ToString());
                     EditorGUILayout.LabelField("Map Sections", report.sections == null
                         ? "Unknown" : report.sections.Length.ToString());
+                    EditorGUILayout.Space(8f);
+                    EditorGUILayout.LabelField("Compiled BIN Data", EditorStyles.boldLabel);
+                    EditorGUILayout.LabelField("map.bin", report.hasCompiledBin
+                        ? report.compiledBinSize.ToString("N0") + " bytes" : "Not loaded");
+                    EditorGUILayout.LabelField("Compiled Header Region",
+                        report.compiledMetadataBytes.ToString("N0") + " bytes");
+                    EditorGUILayout.LabelField("DDS Atlases",
+                        report.compiledTextureCount.ToString());
+                    EditorGUILayout.LabelField("Atlas Source Asset",
+                        string.IsNullOrEmpty(report.compiledAtlasAssetName)
+                            ? "Not identified" : report.compiledAtlasAssetName);
+                    EditorGUILayout.LabelField("Atlas Tile Table",
+                        report.compiledAtlasLayoutVerified
+                            ? report.compiledAtlasTileCount + " tile rectangles validated"
+                            : "Not validated");
+                    EditorGUILayout.LabelField("Import Addresses",
+                        report.compiledImportAddresses.ToString("N0"));
+                    EditorGUILayout.LabelField("Relocation Addresses",
+                        report.compiledRelocationAddresses.ToString("N0"));
+                    EditorGUILayout.LabelField("Manifest Records",
+                        report.manifestAssetCount.ToString("N0"));
+                    EditorGUILayout.LabelField("Records With Binary Data",
+                        report.manifestAssetsWithData.ToString("N0"));
+                    EditorGUILayout.LabelField("Manifest / B-I-R Match",
+                        report.compiledManifestMatchesBin ? "Validated" : "Not validated");
+                    EditorGUILayout.LabelField("Manifest GameObject Names",
+                        report.manifestGameObjectNames.ToString("N0"));
+                    EditorGUILayout.LabelField("Manifest Texture Names",
+                        report.manifestTextureNames.ToString("N0"));
+                    foreach (var atlas in report.compiledTextures)
+                    {
+                        if (atlas == null) continue;
+                        using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+                        {
+                            EditorGUILayout.LabelField(atlas.name, EditorStyles.boldLabel);
+                            EditorGUILayout.LabelField("Source", "map.bin @ 0x" +
+                                atlas.offset.ToString("X8") + " (" + atlas.length +
+                                " bytes)");
+                            EditorGUILayout.LabelField("Format", atlas.format);
+                            if (!string.IsNullOrEmpty(atlas.ownerAsset))
+                                EditorGUILayout.LabelField("Owner", atlas.ownerAsset);
+                            EditorGUILayout.LabelField("Size", atlas.width + " × " +
+                                atlas.height + ", " + atlas.mipCount + " source mips");
+                            using (new EditorGUI.DisabledScope(true))
+                                EditorGUILayout.ObjectField("Unity Texture", atlas.texture,
+                                    typeof(Texture2D), false);
+                        }
+                    }
+                    if (report.compiledAssets.Count > 0)
+                    {
+                        EditorGUILayout.LabelField("Compiled Assets Indexed",
+                            report.compiledAssets.Count.ToString("N0"));
+                        EditorGUILayout.HelpBox("Full per-asset names, IDs, source paths and " +
+                            "B/I/R ranges are stored in the imported Cnc3MapManifest " +
+                            "sub-asset. Compiled W3DMesh bodies may be external.", MessageType.None);
+                    }
+                    if (!string.IsNullOrEmpty(report.compiledImportNote))
+                        EditorGUILayout.HelpBox(report.compiledImportNote, MessageType.None);
                     break;
                 }
             }

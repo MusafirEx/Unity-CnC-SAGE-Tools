@@ -2,7 +2,7 @@
 
 Unity 2022.3 LTS+ Editor tools for **Generals / Zero Hour** binary **W3D importing**, alongside **Tiberium Wars / Kane's Wrath** source **W3X** model/animation import and export.
 
-**Version 0.9.1 — C&C 3 / Kane's Wrath `.map` Mode 1 terrain and object placement importer, alongside W3D/W3X.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
+**Version 0.9.2 — C&C3/Kane's Wrath `.map` Mode 1 plus optional compiled `map.bin` DDS texture atlas import, alongside W3D/W3X.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
 
 > W3D support is **import only**; this package is not a W3D exporter, game asset extractor or confirmed game-ready mod builder. Keep backups and validate with the game toolchain separately.
 
@@ -14,7 +14,7 @@ In Unity, select **Window > Package Manager > + > Add package from git URL**:
 https://github.com/MusafirEx/Unity-CnC-SAGE-Tools.git
 ```
 
-Git and Unity 2022.3 LTS or later are required. After updating a Git-based package, ensure Package Manager resolves **0.9.1** and scripts compile. Do not keep a duplicate installed copy under `Assets/`, or duplicate Editor assemblies may conflict.
+Git and Unity 2022.3 LTS or later are required. After updating a Git-based package, ensure Package Manager resolves **0.9.2** and scripts compile. Do not keep a duplicate installed copy under `Assets/`, or duplicate Editor assemblies may conflict.
 
 ### FBX-style shared W3D/W3X Inspector (v0.8.2)
 
@@ -54,6 +54,20 @@ The importer creates a root GameObject with `SAGE_Terrain` (tiled MeshFilter/Mes
 **Deferred to Mode 2:** loading compiled `.bin/.imp/.manifest/.relo`, texture atlases, matching W3X models, accurate roads/water/blending, gameplay and scripts. No World Builder source is modified. See [technical notes](docs/Cnc3MapImporter.md).
 
 **Status:** C# compilation and actual Unity import must be confirmed in Unity 2022.3 before merging.
+
+## Mode 2A — Optional compiled `map.bin` DDS atlases (0.9.2)
+
+Place the C&C3 World Builder `.map` file beside `map.bin` (optional) in the **same Unity Assets folder**. Select the `.map` asset; its Inspector now has **Mode 2 — Compiled Map BIN**.
+
+- **Import Compiled Atlases** (enabled by default): read `map.bin`, validate `0x9CCE1238` signature, locate *complete* supported DDS images by header/length, and decode BC3/DXT5 or RGB555 first mip to Unity `Texture2D` sub-assets. Textures are named with source format/offset. No plug-in or proprietary runtime DLL is required.
+- **Inspect Compiled Indexes** (enabled by default): optionally inspect sibling `map.imp`, `map.relo`, `map.manifest`, verify matching signatures/record lengths, count primary indexed offsets and count zero-terminated `GameObject:`/`Texture:` manifest names. Indexes remain read-only; they do not produce real Unity object meshes.
+- The imported `.map` still contains existing **SAGE_Terrain** and **SAGE_ObjectPlacements**. If `map.bin` is absent or invalid, the optional compiled import logs a warning but does **not** prevent source terrain/placement import.
+- Atlases are **NOT auto-applied to the terrain** because the game's `BlendTileData` texture coordinate/blend mapping has not yet been decoded. Assign extracted texture sub-assets manually or use the future terrain material mapper.
+- The `.bin` signature and DDS offsets are checked; the verified version-5 manifest is parsed asset by asset (name, source path, type/instance IDs, references and exact B/I/R byte ranges). TerrainTextureAtlas records yield 43 tile IDs and UV pixel bounds. The source map's 241 W3DMesh and 142 GameObject manifest entries have zero binary body bytes in this stream; original asset models must come from base game streams or other referenced packages.
+
+**Validated source fixture `eamap_sb05_4`:** 17,055,700-byte `map.bin`; 966 version-5 manifest assets (25 include binary bodies), 43 terrain atlas tiles; 293,968-byte pre-DDS binary region; DXT5/BC3 2048×2048 atlas at `0x00047C50` (5,587,072 bytes incl. DDS+mips); RGB555 2048×2048 atlas at `0x0059BCD0` (11,174,016 bytes incl. DDS+mips); 2,483 `.imp` addresses, 6,831 primary `.relo` addresses, 142 `GameObject:` names and 131 `Texture:` names in manifest. *These byte-level values were verified against the user's original files.*
+
+**Unity acceptance test:** update the Git package, select/reimport `eamap_sb05_4.map`, confirm two generated Texture2D sub-assets in the expanded `.map`, open them to inspect the atlas previews, and read the Mode 2 Inspector section and Console. No Unity compile or Editor import success is claimed until that real test passes.
 
 ## Generals / Zero Hour — binary W3D import (new in 0.8.0)
 
