@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.9.11",
+  "version": "0.9.12",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Unity C&C3/Kane's Wrath map importer with opt-in official EA Roads.xml template installation, source-authentic road widths and DDS resolution.",
+  "description": "C&C3 / Kane's Wrath Unity map and W3X tools with read-only indexed BIG4/BIGF archive browser, selective RefPack member access and optional direct road DDS source.",
   "unity": "2022.3",
   "keywords": [
     "command and conquer",
