@@ -125,7 +125,22 @@ namespace MusafirEx.CncSage.Editor
                     }
                     else if (name == "BlendTileData")
                     {
-                        ReadTerrainTextureData(reader, stop, version, result);
+                        // An unsupported map version must not break the already
+                        // functioning terrain height/ObjectsList import.
+                        try
+                        {
+                            ReadTerrainTextureData(reader, stop, version, result);
+                        }
+                        catch (InvalidDataException ex)
+                        {
+                            result.TileValues = null;
+                            result.Blends = null;
+                            result.ThreeWayBlends = null;
+                            result.BlendDescriptions.Clear();
+                            result.TerrainTextures.Clear();
+                            result.Warnings.Add("BlendTileData could not be decoded: " +
+                                ex.Message + " (terrain-only fallback).");
+                        }
                     }
                     else if (name == "ObjectsList")
                     {
