@@ -12,7 +12,7 @@ namespace MusafirEx.CncSage.Editor
     /// First-pass C&C 3 / Kane's Wrath World Builder .map importer.
     /// Source map remains untouched. Mode 1: terrain and source object placeholders.
     /// </summary>
-    [ScriptedImporter(10, "map")]
+    [ScriptedImporter(11, "map")]
     public sealed class Cnc3MapImporter : ScriptedImporter
     {
         [Tooltip("Reconstruct HeightMapData as tiled, editable Unity mesh sub-assets.")]
@@ -88,6 +88,9 @@ namespace MusafirEx.CncSage.Editor
 
         [Tooltip("Optional Assets folder containing original road TGA/DDS textures, matching RoadTemplate.Texture filenames.")]
         public DefaultAsset roadTextureFolder;
+
+        [Tooltip("Optional SAGE BIG Archive Index made via Tools > C&C SAGE > BIG Archive Browser. Loads standalone DDS/PNG entries on demand without bulk extraction; compiled .bin textures remain a separate phase.")]
+        public Cnc3BigArchiveIndex roadBigArchive;
 
         [Tooltip("Find WBData automatically and match DDS/TGA/PNG by exact RoadTemplate.Texture filename, then exact road TypeName as an unverified candidate. Manual Texture2D overrides remain highest priority.")]
         public bool autoResolveRoadTextures = true;
@@ -266,6 +269,18 @@ namespace MusafirEx.CncSage.Editor
                     roadTextureFolder);
             report.roadSurfaceIndexedTextures = textureCatalog.IndexedCount;
             report.roadSurfaceSearchedFolders = textureCatalog.SearchFolders;
+            if (roadBigArchive != null)
+            {
+                string indexPath = AssetDatabase.GetAssetPath(roadBigArchive);
+                if (!string.IsNullOrEmpty(indexPath) &&
+                    indexPath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+                    context.DependsOnSourceAsset(indexPath);
+                report.roadBigArchiveEntryCount = roadBigArchive.entries != null
+                    ? roadBigArchive.entries.Count : 0;
+                report.roadBigArchiveStatus = roadBigArchive.IsCurrent
+                    ? "Indexed BIG ready: " + roadBigArchive.archivePath
+                    : "Archive missing/changed: Rescan the BIG index first.";
+            }
             var holder = new GameObject("SAGE_RoadSurfaces_Phase5A").transform;
             holder.SetParent(root.transform, false);
             int counter = 0;
@@ -278,6 +293,25 @@ namespace MusafirEx.CncSage.Editor
                 if (texture == null)
                     textureCatalog.TryResolve(road.TypeName, rawName,
                         autoResolveRoadTextures, out texture, out matchSource);
+                bool generatedFromBig = false;
+                if (texture == null && roadBigArchive != null)
+                {
+                    Texture2D bigTexture;
+                    string bigMatch;
+                    if (Cnc3BigTextureBridge.TryLoad(roadBigArchive,
+                        road.TypeName, rawName, autoResolveRoadTextures,
+                        out bigTexture, out bigMatch))
+                    {
+                        texture = bigTexture;
+                        generatedFromBig = true;
+                        matchSource = bigMatch;
+                        context.AddObjectToAsset(
+                            "SAGE_BIG_RoadTexture_" + counter, texture);
+                        report.roadFromBigTextureCount++;
+                    }
+                    else
+                        matchSource = bigMatch;
+                }
                 if (texture != null &&
                     matchSource != "Manual Road Library Texture2D")
                     report.roadSurfaceAutoMatchedTypes++;
@@ -331,8 +365,9 @@ namespace MusafirEx.CncSage.Editor
                     crossingCount = road.Crossings,
                     foundRoadDefinition = road.HasDefinition,
                     hasTexture = hasShader && texture != null,
-                    textureAssetPath = texture != null
-                        ? AssetDatabase.GetAssetPath(texture) : "",
+                    textureAssetPath = generatedFromBig
+                        ? "BIG member: " + matchSource
+                        : (texture != null ? AssetDatabase.GetAssetPath(texture) : ""),
                     textureMatchSource = matchSource,
                     mesh = road.Mesh,
                     material = material
@@ -1008,6 +1043,7 @@ namespace MusafirEx.CncSage.Editor
             EditorGUILayout.PropertyField(serializedObject.FindProperty("importRoadSurfaces"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("roadLibrary"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("roadTextureFolder"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("roadBigArchive"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("autoResolveRoadTextures"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("roadGuideWidthMultiplier"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("roadGuideSurfaceOffset"));
@@ -1058,6 +1094,13 @@ namespace MusafirEx.CncSage.Editor
                         report.roadSurfaceAutoMatchedTypes.ToString("N0"));
                     EditorGUILayout.LabelField("Indexed Road Texture Candidates",
                         report.roadSurfaceIndexedTextures.ToString("N0"));
+                    EditorGUILayout.LabelField("BIG Archive Members",
+                        report.roadBigArchiveEntryCount.ToString("N0"));
+                    EditorGUILayout.LabelField("DDS Loaded Directly From BIG",
+                        report.roadFromBigTextureCount.ToString("N0"));
+                    if (!string.IsNullOrEmpty(report.roadBigArchiveStatus))
+                        EditorGUILayout.HelpBox(report.roadBigArchiveStatus,
+                            MessageType.Info);
                     if (!string.IsNullOrEmpty(report.roadSurfaceSearchedFolders))
                         EditorGUILayout.LabelField("Texture Folders",
                             report.roadSurfaceSearchedFolders,
