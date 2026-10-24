@@ -2,7 +2,7 @@
 
 Unity 2022.3 LTS+ Editor tools for **Generals / Zero Hour** binary **W3D importing**, alongside **Tiberium Wars / Kane's Wrath** source **W3X** model/animation import and export.
 
-**Version 0.9.10 — automatic extracted-WBData road texture matching for Phase 5A, plus C&C3/KW terrain/blending, connected road networks and lighting.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
+**Version 0.9.11 — original EA Kane's Wrath road definitions, source atlas mapping and connected road surfaces, plus map terrain/blending/lighting.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
 
 > W3D support is **import only**; this package is not a W3D exporter, game asset extractor or confirmed game-ready mod builder. Keep backups and validate with the game toolchain separately.
 
@@ -171,6 +171,18 @@ Two workflows:
 The reference map has 13 **UK, Washington and Aus** road names; the texture index is not expected to match those names to the earlier alphabetical `ASRoad` assets. If road filenames are different from type names, populate original `RoadTemplate.Texture` names (or select the correct DDS manually). Extracted road atlas orientation is still experimental until visually checked against the original game.
 
 See [road texture matching technical notes](docs/Cnc3Phase5RoadTextureAutobind.md).
+
+## v0.9.11 — Original Kane's Wrath RoadTemplate bindings
+
+The road type names in maps **do not always equal their DDS atlas filenames**. Electronic Arts publishes the authoritative 106 records in [`Kanes Wrath/Xml/GlobalData/Roads.xml`](https://github.com/electronicarts/CnC_Modding_Support/blob/main/Kanes%20Wrath/Xml/GlobalData/Roads.xml). For example: `UKSidewalk03 → UKRSidewalk03`, `WashingtonRoadMarking01 → DCRoadMarking01`, `AusDirtRoad01 → ASDirtRoad01`. All 13 road types used by `eamap_sb05_4` have official entries.
+
+**One-click opt-in setup:** Update the Git UPM package, then choose **Tools → C&C SAGE → Install Official Kane's Wrath Road Definitions** in Unity. This downloads `Roads.xml` directly from EA GitHub into `Assets/CnC3KW/Definitions/Roads_KanesWrath.xml`, connects all generated Road Library assets under `Assets/CnC3KW/Maps` which have no existing custom definitions, upgrades their old guessed road widths/atlas names, and attempts exact DDS matching against extracted `WBData`. User-defined texture assignments and edited widths take precedence. Reimport each `.map` with **Import Road Surfaces** enabled.
+
+This project **does not redistribute** EA road templates, source XML, or game art; official XML is fetched into the user's own project only by explicit menu action. The source repo is GPLv3 with additional terms, so check its [license](https://github.com/electronicarts/CnC_Modding_Support/blob/main/LICENSE.md) before redistributing downloaded resources.
+
+If offline, manually save the official EA XML to `Assets/CnC3KW/Definitions/Roads_KanesWrath.xml` then run the same menu item to link the existing file to Road Libraries. Importer supports XML BOM and the EA default namespace.
+
+See [official Phase 5A road definitions and 13-source-style validation](docs/Cnc3Phase5OfficialRoadDefinitions.md). Live Unity compilation and visual acceptance are still pending.
 
 ## Generals / Zero Hour — binary W3D import (new in 0.8.0)
 
