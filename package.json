@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.9.6",
+  "version": "0.9.7",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Unity C&C SAGE W3X/W3D tools with C&C3 source map terrain, texture blending and standing-water polygon previews.",
+  "description": "Unity C&C SAGE importer with per-map compiled stream validation, terrain atlas blending and standing water.",
   "unity": "2022.3",
   "keywords": [
     "command and conquer",
