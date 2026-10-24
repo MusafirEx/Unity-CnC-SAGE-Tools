@@ -1,14 +1,33 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
 namespace MusafirEx.CncSage.Editor
 {
-    // Read-only diagnostics for the optional B/I/M/R compiled asset bundle.
-    // The index values are locations in the compiled .bin, not file offsets to
-    // standalone W3X meshes. No relocation patches or object mutation occur.
+    /// <summary>
+    /// Read-only v5 SAGE manifest asset index. Layout independently verified
+    /// against BinaryAssetBuilder's 0x30-byte ManifestHeader and 0x2C-byte
+    /// AssetEntry5 and the user's actual C&C3 map manifest.
+    /// No compiled object code, scripts, relocation writes or asset execution.
+    /// </summary>
     internal static class Cnc3CompiledMapBundle
     {
+        internal sealed class AssetInfo
+        {
+            internal string Name;
+            internal string Source;
+            internal uint TypeId;
+            internal uint InstanceId;
+            internal int BinaryOffset;
+            internal int BinaryLength;
+            internal int ImportOffset;
+            internal int ImportLength;
+            internal int RelocationOffset;
+            internal int RelocationLength;
+            internal uint ReferenceCount;
+        }
+
         internal sealed class Summary
         {
             internal bool ImpPresent;
@@ -19,8 +38,20 @@ namespace MusafirEx.CncSage.Editor
             internal int ManifestGameObjects;
             internal int ManifestTextures;
             internal bool ManifestLinksBinary;
-            internal readonly System.Collections.Generic.List<string> Warnings =
-                new System.Collections.Generic.List<string>();
+            internal int ManifestVersion;
+            internal int ManifestAssetCount;
+            internal int ManifestAssetsWithData;
+            internal readonly List<AssetInfo> Assets = new List<AssetInfo>();
+            internal readonly List<string> Warnings = new List<string>();
+
+            internal string FindOwner(long offset)
+            {
+                foreach (AssetInfo item in Assets)
+                    if (item.BinaryLength != 0 && offset >= item.BinaryOffset &&
+                        offset < (long)item.BinaryOffset + item.BinaryLength)
+                        return item.Name;
+                return string.Empty;
+            }
         }
 
         internal static Summary Inspect(string folder, long binLength)
@@ -38,56 +69,138 @@ namespace MusafirEx.CncSage.Editor
             if (summary.ReloPresent)
                 summary.RelocationAddresses = CountIndexedOffsets(reloPath, binLength,
                     summary.Warnings, "map.relo");
-
             if (summary.ManifestPresent)
-            {
-                var info = new FileInfo(manifestPath);
-                if (info.Length < 64 || info.Length > 64 * 1024 * 1024)
-                {
-                    summary.Warnings.Add("map.manifest has an unsupported length.");
-                    return summary;
-                }
-                byte[] bytes = File.ReadAllBytes(manifestPath);
-                if (Read32(bytes, 4) != Cnc3CompiledMapReader.Signature)
-                {
-                    summary.Warnings.Add("map.manifest signature does not match map.bin.");
-                    return summary;
-                }
-                // Confirmed from the user's sample: bytes 0x10 and 0x1C
-                // respectively record map.bin/map.imp payload bytes excluding
-                // their 4-byte signatures. Do not infer further layout here.
-                summary.ManifestLinksBinary = Read32(bytes, 0x10) == binLength - 4;
-                if (!summary.ManifestLinksBinary)
-                    summary.Warnings.Add("map.manifest bin-size field does not match map.bin.");
-                if (summary.ImpPresent &&
-                    Read32(bytes, 0x1c) != new FileInfo(impPath).Length - 4)
-                    summary.Warnings.Add("map.manifest imp-size field does not match map.imp.");
-
-                for (int i = 0; i < bytes.Length - 16; i++)
-                {
-                    if (i != 0 && bytes[i - 1] != 0) continue;
-                    if (IsLabel(bytes, i, "GameObject:"))
-                        summary.ManifestGameObjects++;
-                    else if (IsLabel(bytes, i, "Texture:"))
-                        summary.ManifestTextures++;
-                }
-            }
+                ParseManifest(manifestPath, binLength,
+                    summary.ImpPresent ? new FileInfo(impPath).Length : -1,
+                    summary.ReloPresent ? new FileInfo(reloPath).Length : -1,
+                    summary);
             return summary;
         }
 
-        private static bool IsLabel(byte[] bytes, int index, string target)
+        private static void ParseManifest(string path, long binBytes,
+            long impBytes, long reloBytes, Summary result)
         {
-            if (bytes.Length - index < target.Length) return false;
-            for (int j = 0; j < target.Length; j++)
-                if (bytes[index + j] != (byte)target[j]) return false;
-            return true;
+            var file = new FileInfo(path);
+            if (file.Length < 48 || file.Length > 64L * 1024 * 1024)
+            {
+                result.Warnings.Add("map.manifest is not a supported length.");
+                return;
+            }
+            byte[] data = File.ReadAllBytes(path);
+            if (Read32(data, 4) != Cnc3CompiledMapReader.Signature)
+            {
+                result.Warnings.Add("map.manifest signature does not match map.bin.");
+                return;
+            }
+            int version = data[2] | (data[3] << 8);
+            result.ManifestVersion = version;
+            if (version != 5)
+            {
+                result.Warnings.Add("Only map.manifest version 5 has a verified asset-entry layout.");
+                return;
+            }
+            uint count = Read32(data, 0x0C);
+            if (count > 100000)
+            {
+                result.Warnings.Add("map.manifest asset count is too large.");
+                return;
+            }
+            result.ManifestAssetCount = (int)count;
+            uint declaredBinBytes = Read32(data, 0x10);
+            uint referenceBytes = Read32(data, 0x20);
+            uint referencedManifestNameBytes = Read32(data, 0x24);
+            uint nameBytes = Read32(data, 0x28);
+            uint sourceBytes = Read32(data, 0x2C);
+            long entryStart = 0x30;
+            long referenceStart = entryStart + 44L * count;
+            long referenceManifestStart = referenceStart + referenceBytes;
+            long nameStart = referenceManifestStart + referencedManifestNameBytes;
+            long sourceStart = nameStart + nameBytes;
+            long manifestEnd = sourceStart + sourceBytes;
+            if (manifestEnd != data.Length ||
+                nameStart < 0 || sourceStart < nameStart || sourceStart > data.Length)
+            {
+                result.Warnings.Add("Manifest name/reference buffer layout failed bounds validation.");
+                return;
+            }
+
+            long binaryOffset = 4, importOffset = 4, reloOffset = 4;
+            for (int i = 0; i < count; i++)
+            {
+                int at = checked((int)(entryStart + 44L * i));
+                uint typeId = Read32(data, at);
+                uint instanceId = Read32(data, at + 4);
+                uint referencesOffset = Read32(data, at + 16);
+                uint referencesCount = Read32(data, at + 20);
+                uint nameOffset = Read32(data, at + 24);
+                uint sourceOffset = Read32(data, at + 28);
+                uint binarySize = Read32(data, at + 32);
+                uint relocationSize = Read32(data, at + 36);
+                uint importsSize = Read32(data, at + 40);
+
+                if (nameOffset >= nameBytes || sourceOffset >= sourceBytes ||
+                    referencesOffset > referenceBytes ||
+                    (ulong)referencesCount * 8 > referenceBytes - referencesOffset ||
+                    binaryOffset + binarySize > binBytes ||
+                    (impBytes >= 0 && importOffset + importsSize > impBytes) ||
+                    (reloBytes >= 0 && reloOffset + relocationSize > reloBytes))
+                {
+                    result.Warnings.Add("Malformed map.manifest asset record #" + i + ".");
+                    result.Assets.Clear();
+                    return;
+                }
+
+                string name = ReadName(data, checked((int)(nameStart + nameOffset)),
+                    checked((int)(nameStart + nameBytes)));
+                string source = ReadName(data, checked((int)(sourceStart + sourceOffset)),
+                    checked((int)(sourceStart + sourceBytes)));
+                if (name.StartsWith("GameObject:", StringComparison.Ordinal))
+                    result.ManifestGameObjects++;
+                if (name.StartsWith("Texture:", StringComparison.Ordinal))
+                    result.ManifestTextures++;
+                if (binarySize > 0)
+                    result.ManifestAssetsWithData++;
+
+                result.Assets.Add(new AssetInfo
+                {
+                    Name = name,
+                    Source = source,
+                    TypeId = typeId,
+                    InstanceId = instanceId,
+                    BinaryOffset = checked((int)binaryOffset),
+                    BinaryLength = checked((int)binarySize),
+                    RelocationOffset = checked((int)reloOffset),
+                    RelocationLength = checked((int)relocationSize),
+                    ImportOffset = checked((int)importOffset),
+                    ImportLength = checked((int)importsSize),
+                    ReferenceCount = referencesCount
+                });
+                binaryOffset += binarySize;
+                importOffset += importsSize;
+                reloOffset += relocationSize;
+            }
+            result.ManifestLinksBinary = declaredBinBytes == binBytes - 4 &&
+                binaryOffset == binBytes &&
+                (impBytes < 0 || importOffset == impBytes) &&
+                (reloBytes < 0 || reloOffset == reloBytes);
+            if (!result.ManifestLinksBinary)
+                result.Warnings.Add("Manifest compiled section lengths don't match B/I/R data sizes.");
+        }
+
+        private static string ReadName(byte[] data, int at, int stop)
+        {
+            int end = at;
+            while (end < stop && data[end] != 0) end++;
+            if (end >= stop || end - at > 2048)
+                throw new InvalidDataException("Unterminated or oversized manifest name.");
+            return Encoding.UTF8.GetString(data, at, end - at);
         }
 
         internal static int CountIndexedOffsets(string path, long binSize,
-            System.Collections.Generic.List<string> warnings, string name)
+            List<string> warnings, string name)
         {
             var info = new FileInfo(path);
-            if (info.Length < 8 || info.Length > 64 * 1024 * 1024 ||
+            if (info.Length < 8 || info.Length > 64L * 1024 * 1024 ||
                 (info.Length & 3) != 0)
             {
                 warnings.Add(name + " has an unsupported length.");
@@ -112,20 +225,20 @@ namespace MusafirEx.CncSage.Editor
                 }
                 if ((offset & 3) != 0 || offset >= binSize || offset <= previous)
                 {
-                    warnings.Add(name + " contains an invalid or nonmonotonic primary offset.");
+                    warnings.Add(name + " contains an invalid primary offset.");
                     return count;
                 }
                 previous = offset;
                 count++;
             }
             if (!terminated)
-                warnings.Add(name + " primary address table has no terminator.");
+                warnings.Add(name + " primary table is not terminated.");
             return count;
         }
 
-        private static uint Read32(byte[] bytes, int offset)
+        private static uint Read32(byte[] data, int offset)
         {
-            return Cnc3CompiledMapReader.U32(bytes, offset);
+            return Cnc3CompiledMapReader.U32(data, offset);
         }
     }
 }
