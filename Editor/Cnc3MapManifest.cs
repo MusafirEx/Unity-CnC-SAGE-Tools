@@ -37,6 +37,11 @@ namespace MusafirEx.CncSage.Editor
         public int compiledRelocationAddresses;
         public int manifestGameObjectNames;
         public int manifestAssetCount;
+        public bool compiledAtlasLayoutVerified;
+        public string compiledAtlasAssetName;
+        public int compiledAtlasTileCount;
+        public List<Cnc3AtlasTileEntry> compiledAtlasTiles =
+            new List<Cnc3AtlasTileEntry>();
         public int manifestAssetsWithData;
         public int manifestTextureNames;
         public bool compiledManifestMatchesBin;
@@ -63,6 +68,13 @@ namespace MusafirEx.CncSage.Editor
         public long offset;
         public int length;
         public Texture2D texture;
+    }
+
+    [Serializable]
+    public sealed class Cnc3AtlasTileEntry
+    {
+        public uint textureId;
+        public int x0, y0, x1, y1;
     }
 
     [Serializable]
