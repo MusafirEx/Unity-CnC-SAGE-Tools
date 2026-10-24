@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Unity C&C SAGE W3X/W3D tools, C&C3 map terrain/object import, and optional compiled map.bin DDS atlas decoding.",
+  "description": "Unity C&C SAGE W3X/W3D tooling with C&C3/KW map terrain, objects and automatic compiled atlas UV mapping.",
   "unity": "2022.3",
   "keywords": [
     "command and conquer",
