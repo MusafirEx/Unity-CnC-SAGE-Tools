@@ -12,7 +12,7 @@ namespace MusafirEx.CncSage.Editor
     /// First-pass C&C 3 / Kane's Wrath World Builder .map importer.
     /// Source map remains untouched. Mode 1: terrain and source object placeholders.
     /// </summary>
-    [ScriptedImporter(8, "map")]
+    [ScriptedImporter(9, "map")]
     public sealed class Cnc3MapImporter : ScriptedImporter
     {
         [Tooltip("Reconstruct HeightMapData as tiled, editable Unity mesh sub-assets.")]
@@ -88,6 +88,9 @@ namespace MusafirEx.CncSage.Editor
 
         [Tooltip("Optional Assets folder containing original road TGA/DDS textures, matching RoadTemplate.Texture filenames.")]
         public DefaultAsset roadTextureFolder;
+
+        [Tooltip("Find WBData automatically and match DDS/TGA/PNG by exact RoadTemplate.Texture filename, then exact road TypeName as an unverified candidate. Manual Texture2D overrides remain highest priority.")]
+        public bool autoResolveRoadTextures = true;
 
 
         [Tooltip("Global width multiplier for approximate road guide previews; exact widths require external SAGE Road assets.")]
@@ -258,8 +261,11 @@ namespace MusafirEx.CncSage.Editor
                 return;
             }
 
-            Dictionary<string, Texture2D> imageIndex =
-                IndexRoadTextures(context, context.assetPath);
+            Cnc3RoadTextureCatalog textureCatalog =
+                Cnc3RoadTextureCatalog.Create(context.assetPath, roadLibrary,
+                    roadTextureFolder);
+            report.roadSurfaceIndexedTextures = textureCatalog.IndexedCount;
+            report.roadSurfaceSearchedFolders = textureCatalog.SearchFolders;
             var holder = new GameObject("SAGE_RoadSurfaces_Phase5A").transform;
             holder.SetParent(root.transform, false);
             int counter = 0;
@@ -267,10 +273,17 @@ namespace MusafirEx.CncSage.Editor
             {
                 Texture2D texture = road.RoadTexture;
                 string rawName = road.SourceTextureName;
-                if (texture == null && !string.IsNullOrWhiteSpace(rawName))
-                    imageIndex.TryGetValue(
-                        Path.GetFileNameWithoutExtension(rawName).ToLowerInvariant(),
-                        out texture);
+                string matchSource = texture != null
+                    ? "Manual Road Library Texture2D" : "Not found";
+                if (texture == null)
+                    textureCatalog.TryResolve(road.TypeName, rawName,
+                        autoResolveRoadTextures, out texture, out matchSource);
+                if (texture != null &&
+                    matchSource != "Manual Road Library Texture2D")
+                    report.roadSurfaceAutoMatchedTypes++;
+                else if (texture == null)
+                    report.roadSurfaceMissingTextures.Add(
+                        road.TypeName + " (" + matchSource + ")");
                 if (texture != null)
                 {
                     string texPath = AssetDatabase.GetAssetPath(texture);
@@ -318,6 +331,9 @@ namespace MusafirEx.CncSage.Editor
                     crossingCount = road.Crossings,
                     foundRoadDefinition = road.HasDefinition,
                     hasTexture = hasShader && texture != null,
+                    textureAssetPath = texture != null
+                        ? AssetDatabase.GetAssetPath(texture) : "",
+                    textureMatchSource = matchSource,
                     mesh = road.Mesh,
                     material = material
                 });
@@ -333,54 +349,14 @@ namespace MusafirEx.CncSage.Editor
                 " styles defined, " + report.roadSurfaceTexturedTypes +
                 " styles textured. Three-/four-way pads and curve geometry " +
                 "are preliminary; final SAGE road intersections are Phase 5B.";
+            if (report.roadSurfaceMissingTextures.Count > 0)
+                Debug.LogWarning("[C&C SAGE ROADS] Missing exact texture matches: " +
+                    string.Join(", ", report.roadSurfaceMissingTextures.ToArray()) +
+                    ". Searched: " + report.roadSurfaceSearchedFolders);
             foreach (string warning in warnings)
                 Debug.LogWarning("[C&C SAGE ROADS] " + warning);
             Debug.Log("[C&C SAGE ROADS] " + context.assetPath + ": " +
                 report.roadSurfaceStatus);
-        }
-
-        private Dictionary<string, Texture2D> IndexRoadTextures(
-            AssetImportContext context, string mapPath)
-        {
-            var output = new Dictionary<string, Texture2D>(
-                StringComparer.OrdinalIgnoreCase);
-            var searchFolders = new List<string>();
-            string mapFolder = Path.GetDirectoryName(mapPath);
-            if (!string.IsNullOrEmpty(mapFolder) &&
-                AssetDatabase.IsValidFolder(mapFolder))
-                searchFolders.Add(mapFolder);
-            if (roadLibrary != null && roadLibrary.sourceDefinitions != null)
-            {
-                string defFolder = Path.GetDirectoryName(AssetDatabase.GetAssetPath(
-                    roadLibrary.sourceDefinitions));
-                if (!string.IsNullOrEmpty(defFolder) &&
-                    AssetDatabase.IsValidFolder(defFolder) &&
-                    !searchFolders.Contains(defFolder))
-                    searchFolders.Add(defFolder);
-            }
-            if (roadTextureFolder != null)
-            {
-                string candidate = AssetDatabase.GetAssetPath(roadTextureFolder);
-                if (!string.IsNullOrEmpty(candidate) &&
-                    AssetDatabase.IsValidFolder(candidate) &&
-                    !searchFolders.Contains(candidate))
-                    searchFolders.Add(candidate);
-            }
-            foreach (string folder in searchFolders)
-            {
-                string[] guids = AssetDatabase.FindAssets("t:Texture2D",
-                    new[] { folder });
-                foreach (string guid in guids)
-                {
-                    string assetPath = AssetDatabase.GUIDToAssetPath(guid);
-                    if (string.IsNullOrEmpty(assetPath)) continue;
-                    string key = Path.GetFileNameWithoutExtension(assetPath);
-                    if (string.IsNullOrEmpty(key) || output.ContainsKey(key)) continue;
-                    Texture2D image = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
-                    if (image != null) output.Add(key, image);
-                }
-            }
-            return output;
         }
 
         private static Color RoadPreviewTint(string name)
@@ -1032,6 +1008,7 @@ namespace MusafirEx.CncSage.Editor
             EditorGUILayout.PropertyField(serializedObject.FindProperty("importRoadSurfaces"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("roadLibrary"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("roadTextureFolder"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("autoResolveRoadTextures"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("roadGuideWidthMultiplier"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("roadGuideSurfaceOffset"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("maximumRoadGuideSegments"));
@@ -1077,6 +1054,29 @@ namespace MusafirEx.CncSage.Editor
                         report.roadSurfaceResolvedTypes.ToString("N0"));
                     EditorGUILayout.LabelField("Road Types Textured",
                         report.roadSurfaceTexturedTypes.ToString("N0"));
+                    EditorGUILayout.LabelField("Auto-Matched Road Textures",
+                        report.roadSurfaceAutoMatchedTypes.ToString("N0"));
+                    EditorGUILayout.LabelField("Indexed Road Texture Candidates",
+                        report.roadSurfaceIndexedTextures.ToString("N0"));
+                    if (!string.IsNullOrEmpty(report.roadSurfaceSearchedFolders))
+                        EditorGUILayout.LabelField("Texture Folders",
+                            report.roadSurfaceSearchedFolders,
+                            EditorStyles.wordWrappedLabel);
+                    if (report.roadSurfaceMissingTextures != null &&
+                        report.roadSurfaceMissingTextures.Count != 0)
+                        EditorGUILayout.HelpBox("Missing road textures: " +
+                            string.Join(", ", report.roadSurfaceMissingTextures.ToArray()),
+                            MessageType.Warning);
+                    if (report.roadSurfaceTypes != null)
+                    {
+                        foreach (var sourceRoad in report.roadSurfaceTypes)
+                        {
+                            if (sourceRoad == null) continue;
+                            EditorGUILayout.LabelField(sourceRoad.roadType,
+                                (sourceRoad.hasTexture ? "DDS linked: " : "Missing: ") +
+                                sourceRoad.textureMatchSource);
+                        }
+                    }
                     if (!string.IsNullOrEmpty(report.roadSurfaceStatus))
                         EditorGUILayout.HelpBox(report.roadSurfaceStatus, MessageType.Info);
                     if (!string.IsNullOrEmpty(report.roadGuideStatus))
