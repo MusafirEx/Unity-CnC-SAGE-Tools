@@ -49,7 +49,7 @@ Select a C&C 3 World Builder `.map` file in the Unity Project window to import i
 
 **Currently unavailable:** object placements, terrain-texture blending, roads, water areas, lighting, scripts, AI and gameplay. Names of other top-level sections are indexed, but their binary payloads are not decoded. Actual game models and textures are referenced by map data, not embedded as reusable Unity meshes; this plugin doesn't extract them from BIG archives. Terrain geometry only is generated until further development.
 
-**Sample test:** Import the Package Manager sample **Minimal C&C3 Map**, run `python generate_map_samples.py` from its folder (Python 3 stdlib), then let Unity refresh. `SageTerrainSynthetic.map` and `SageTerrainSyntheticCompressed.map` should each import one 12×10 sample-grid terrain with a raised hill. Both are synthetic test files, not original EA maps.
+**Sample test:** Import the Package Manager sample **Minimal C&C3 Map**, run `python generate_map_samples.py` from its folder (Python 3 stdlib), then let Unity refresh. `SageTerrainSynthetic.map`, `SageTerrainSyntheticCompressed.map` and `SageTerrainSyntheticBackrefs.map` should each import one 12×10 sample-grid terrain with a raised hill. Both are synthetic test files, not original EA maps.
 
 **Real map test:** Extract an authentic C&C 3 `.map` from your installed game or export a simple one from World Builder and place it under `Assets/Maps/`. Inspect the generated **SAGE_Terrain** and Unity Console warnings; keep the map's companion files together for later stages. The first importer has not yet been validated on real game maps and might need format-specific adjustments.
 
