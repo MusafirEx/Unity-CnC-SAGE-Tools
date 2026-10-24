@@ -250,6 +250,13 @@ namespace MusafirEx.CncSage.Editor
                         mappingProblem);
             }
             report.terrainAtlasApplied = useAtlas;
+            report.terrainAtlasStatus = useAtlas
+                ? "Base atlas applied: " + map.TerrainTextures.Count + " matched TextureIDs."
+                : (applyAtlasToTerrain
+                    ? (string.IsNullOrEmpty(mappingProblem)
+                        ? "Missing compiled atlas, source textures or atlas tile table."
+                        : mappingProblem)
+                    : "Auto-apply disabled in Importer Inspector.");
             report.terrainTextureMatchCount = useAtlas ? map.TerrainTextures.Count : 0;
             report.terrainSourceTextureCount = map.TerrainTextures.Count;
 
@@ -501,6 +508,9 @@ namespace MusafirEx.CncSage.Editor
                         report.terrainSourceTextureCount.ToString());
                     EditorGUILayout.LabelField("Texture IDs Matched",
                         report.terrainTextureMatchCount.ToString());
+                    if (!string.IsNullOrEmpty(report.terrainAtlasStatus))
+                        EditorGUILayout.HelpBox(report.terrainAtlasStatus,
+                            report.terrainAtlasApplied ? MessageType.Info : MessageType.Warning);
                     EditorGUILayout.LabelField("Object Placements", report.objectCount.ToString());
                     EditorGUILayout.LabelField("Generated Placeholders", report.objectMarkerCount.ToString());
                     EditorGUILayout.LabelField("Distinct Object Types", report.distinctObjectTypes.ToString());
