@@ -105,7 +105,11 @@ namespace MusafirEx.CncSage.Editor
                             @"^(?:Road|RoadTemplate)\s+([A-Za-z0-9_./-]+)\s*$",
                             RegexOptions.IgnoreCase);
                         if (start.Success)
-                            current = new Template { roadType = start.Groups[1].Value };
+                            current = new Template {
+                                roadType = start.Groups[1].Value,
+                                roadWidth = 0f,
+                                roadWidthInTexture = 0f
+                            };
                         continue;
                     }
                     if (string.Equals(line, "End", StringComparison.OrdinalIgnoreCase))
@@ -147,7 +151,11 @@ namespace MusafirEx.CncSage.Editor
                     string roadName = reader.GetAttribute("id") ??
                         reader.GetAttribute("name") ?? reader.GetAttribute("Name");
                     if (string.IsNullOrWhiteSpace(roadName)) continue;
-                    var record = new Template { roadType = roadName.Trim() };
+                    var record = new Template {
+                        roadType = roadName.Trim(),
+                        roadWidth = 0f,
+                        roadWidthInTexture = 0f
+                    };
                     Assign(record, "Texture",
                         reader.GetAttribute("Texture") ?? reader.GetAttribute("texture"));
                     Assign(record, "RoadWidth",
