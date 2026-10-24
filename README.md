@@ -2,7 +2,7 @@
 
 Unity 2022.3 LTS+ Editor tools for **Generals / Zero Hour** binary **W3D importing**, alongside **Tiberium Wars / Kane's Wrath** source **W3X** model/animation import and export.
 
-**Version 0.9.11 — original EA Kane's Wrath road definitions, source atlas mapping and connected road surfaces, plus map terrain/blending/lighting.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
+**Version 0.9.12 — read-only direct SAGE BIG archive browsing and optional on-demand road textures, plus existing terrain/roads/W3X.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
 
 > W3D support is **import only**; this package is not a W3D exporter, game asset extractor or confirmed game-ready mod builder. Keep backups and validate with the game toolchain separately.
 
@@ -183,6 +183,18 @@ This project **does not redistribute** EA road templates, source XML, or game ar
 If offline, manually save the official EA XML to `Assets/CnC3KW/Definitions/Roads_KanesWrath.xml` then run the same menu item to link the existing file to Road Libraries. Importer supports XML BOM and the EA default namespace.
 
 See [official Phase 5A road definitions and 13-source-style validation](docs/Cnc3Phase5OfficialRoadDefinitions.md). Live Unity compilation and visual acceptance are still pending.
+
+## v0.9.12 — Direct BIG archive browser (no bulk extraction)
+
+**You no longer need to unpack an entire `WBData.big` just to inspect its files.** Use **Tools → C&C SAGE → BIG Archive Browser**, select the original C&C3/Kane's Wrath `.big` (including one outside the Unity Assets directory), and save a compact `Cnc3BigArchiveIndex.asset`. This is an **index only**: thousands of W3X, DDS, XML and compiled entries are not individually imported.
+
+The browser supports `BIG4`/`BIGF`, filename searching, member offset/size reports, stale-index detection, selective extraction of one requested file, and bounded on-demand EA RefPack decompression. Large *uncompressed* entries export via streaming.
+
+For Phase 5A roads, assign the saved index to **Road BIG Archive** in the `.map` Inspector. If the BIG contains individually addressable DXT1/DXT5 `.dds` or `.png` entries matching road texture names, the importer loads **only required textures** as `.map` subassets, rather than generating a separate texture asset for every archive file.
+
+**Important:** The original game archives often contain compiled `.bin`, `.manifest`, `.imp`, `.relo` streams instead of individually stored W3X/DDS. This release indexes and exposes those streams **without decoding their internal asset records**. If Road Types Textured remains zero, Phase BIG-2 must map compiled texture definitions and stream assets. Existing extracted WBData still must be preserved until complete direct-resource support is validated.
+
+[Direct BIG guide, limitations and Unity steps](docs/Cnc3DirectBigArchive.md).
 
 ## Generals / Zero Hour — binary W3D import (new in 0.8.0)
 
