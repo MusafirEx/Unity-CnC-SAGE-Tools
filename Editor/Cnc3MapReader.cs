@@ -12,6 +12,21 @@ namespace MusafirEx.CncSage.Editor
     /// </summary>
     internal static class Cnc3MapReader
     {
+        internal sealed class WaterArea
+        {
+            internal uint UniqueId;
+            internal string Name;
+            internal string LayerName;
+            internal string BumpMap;
+            internal string SkyTexture;
+            internal string FxShader;
+            internal string DepthColors;
+            internal float UvScrollSpeed;
+            internal bool Additive;
+            internal uint WaterHeight;
+            internal UnityEngine.Vector2[] Points;
+        }
+
         internal sealed class TerrainBlend
         {
             internal int SecondaryTile;
@@ -53,6 +68,9 @@ namespace MusafirEx.CncSage.Editor
             internal readonly List<TerrainBlend> BlendDescriptions = new List<TerrainBlend>();
             internal readonly List<TerrainTexture> TerrainTextures = new List<TerrainTexture>();
             internal bool Compressed;
+            internal bool ReflectionEnabled;
+            internal float ReflectionPlaneZ;
+            internal readonly List<WaterArea> StandingWaters = new List<WaterArea>();
             internal readonly List<ObjectData> Objects = new List<ObjectData>();
             internal readonly List<string> SectionNames = new List<string>();
             internal readonly List<string> Warnings = new List<string>();
@@ -146,17 +164,111 @@ namespace MusafirEx.CncSage.Editor
                     {
                         ReadObjects(reader, stop, names, result);
                     }
+                    else if (name == "GlobalWaterSettings")
+                    {
+                        ReadGlobalWater(reader, stop, result);
+                    }
+                    else if (name == "StandingWaterAreas")
+                    {
+                        ReadStandingWaters(reader, stop, version, result);
+                    }
                     stream.Position = stop;
                 }
             }
             if (result.Elevations == null)
                 throw new InvalidDataException("C&C map has no HeightMapData section.");
             if (result.SectionNames.Count > 1)
-                result.Warnings.Add("Map terrain and object placements decoded. Detailed roads, " +
-                    "secondary/three-way texture blending, water and scripts remain experimental.");
+                result.Warnings.Add("Map terrain and source objects decoded; water preview polygons are " +
+                    "supported, but original SAGE reflections, roads and scripts are not reconstructed.");
             return result;
         }
 
+
+
+        private static void ReadGlobalWater(BinaryReader reader, long stop, Data result)
+        {
+            if (stop - reader.BaseStream.Position < 8)
+                throw new InvalidDataException("Truncated GlobalWaterSettings.");
+            uint flag = reader.ReadUInt32();
+            float height = reader.ReadSingle();
+            if (flag > 1 || float.IsNaN(height) || float.IsInfinity(height))
+                throw new InvalidDataException("Invalid global water reflection settings.");
+            result.ReflectionEnabled = flag != 0;
+            result.ReflectionPlaneZ = height;
+        }
+
+        private static void ReadStandingWaters(BinaryReader reader, long stop,
+            ushort version, Data result)
+        {
+            if (version != 2)
+            {
+                result.Warnings.Add("Unsupported StandingWaterAreas version " + version +
+                    "; water geometry skipped.");
+                return;
+            }
+            if (stop - reader.BaseStream.Position < 4)
+                throw new InvalidDataException("Truncated StandingWaterAreas header.");
+            uint count = reader.ReadUInt32();
+            if (count > 256)
+                throw new InvalidDataException("StandingWaterAreas count exceeds safety limit.");
+            for (int i = 0; i < count; i++)
+            {
+                if (stop - reader.BaseStream.Position < 4)
+                    throw new InvalidDataException("Truncated water area ID.");
+                var water = new WaterArea();
+                water.UniqueId = reader.ReadUInt32();
+                water.Name = ReadWaterString(reader, stop);
+                water.LayerName = ReadWaterString(reader, stop);
+                if (stop - reader.BaseStream.Position < 5)
+                    throw new InvalidDataException("Truncated water scroll and additive data.");
+                water.UvScrollSpeed = reader.ReadSingle();
+                byte additive = reader.ReadByte();
+                if (additive > 1 ||
+                    float.IsNaN(water.UvScrollSpeed) ||
+                    float.IsInfinity(water.UvScrollSpeed))
+                    throw new InvalidDataException("Invalid standing-water render settings.");
+                water.Additive = additive != 0;
+                water.BumpMap = ReadWaterString(reader, stop);
+                water.SkyTexture = ReadWaterString(reader, stop);
+                if (stop - reader.BaseStream.Position < 4)
+                    throw new InvalidDataException("Truncated standing-water point count.");
+                uint pointCount = reader.ReadUInt32();
+                if (pointCount < 3 || pointCount > 4096 ||
+                    (long)pointCount * 8 + 4 > stop - reader.BaseStream.Position)
+                    throw new InvalidDataException("Standing-water polygon count outside section.");
+                water.Points = new UnityEngine.Vector2[pointCount];
+                for (int k = 0; k < pointCount; k++)
+                {
+                    float x = reader.ReadSingle();
+                    float y = reader.ReadSingle();
+                    if (float.IsNaN(x) || float.IsNaN(y) ||
+                        float.IsInfinity(x) || float.IsInfinity(y))
+                        throw new InvalidDataException("Non-finite standing-water coordinates.");
+                    water.Points[k] = new UnityEngine.Vector2(x, y);
+                }
+                water.WaterHeight = reader.ReadUInt32();
+                water.FxShader = ReadWaterString(reader, stop);
+                water.DepthColors = ReadWaterString(reader, stop);
+                result.StandingWaters.Add(water);
+            }
+            if (reader.BaseStream.Position != stop)
+                result.Warnings.Add("StandingWaterAreas contains " +
+                    (stop - reader.BaseStream.Position) +
+                    " unparsed bytes after known v2 records.");
+        }
+
+        private static string ReadWaterString(BinaryReader reader, long stop)
+        {
+            if (stop - reader.BaseStream.Position < 2)
+                throw new InvalidDataException("Truncated water UTF-8 length.");
+            ushort length = reader.ReadUInt16();
+            if (length > 2048 || length > stop - reader.BaseStream.Position)
+                throw new InvalidDataException("Water string exceeds source section bounds.");
+            byte[] value = reader.ReadBytes(length);
+            if (value.Length != length)
+                throw new EndOfStreamException("Truncated standing-water string.");
+            return Encoding.ASCII.GetString(value);
+        }
 
         private static void ReadTerrainTextureData(BinaryReader reader, long stop,
             ushort version, Data output)
