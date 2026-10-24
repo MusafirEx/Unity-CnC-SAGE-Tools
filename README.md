@@ -2,7 +2,7 @@
 
 Unity 2022.3 LTS+ Editor tools for **Generals / Zero Hour** binary **W3D importing**, alongside **Tiberium Wars / Kane's Wrath** source **W3X** model/animation import and export.
 
-**Version 0.9.7 — Per-map compiled asset ID validation fix for C&C3/KW `.map` terrain, blending and standing-water previews.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
+**Version 0.9.8 — C&C3/KW source-map road previews, cliff mapping and terrain-lighting presets, plus terrain/blending/water.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
 
 > W3D support is **import only**; this package is not a W3D exporter, game asset extractor or confirmed game-ready mod builder. Keep backups and validate with the game toolchain separately.
 
@@ -134,6 +134,18 @@ The compiled reader now compares each `map.bin` ID with **the same map's** `map.
 The Unity Package Manager also previously emitted `Asset ... Shaders has no meta file, but it's in an immutable folder`; this update includes `Shaders.meta` and four previously missing documentation .meta files so the shader directory can import normally.
 
 **Test:** Install the feature branch, reimport `map_mp_2_simon_b.map` and `map_mp_2_black2_redzoned.map`. Check the Inspector's Compiled Stream ID, DDS Atlas count, Source Terrain Textures, Texture IDs Matched and Atlas Applied to Terrain. Successful texture display still depends on each map's actual DDS and compatible TerrainTextureAtlas/BlendTileData records; this fix removes the known checksum gate, not all possible map-format variations.
+
+## v0.9.8 — Experimental cliffs, road guides & terrain lighting
+
+This milestone adds three optional source-map features. Existing diffuse atlas, two-way/three-way blending, objects and water remain unchanged until these features are enabled.
+
+- **Preview Cliff Textures** (OFF): decodes source `BlendTileData` cliff grid and 38-byte corner-UV mapping records. Maps active cells against compiled atlas. The sample `eamap_sb05_4` has **zero active cliff cells**, so accurate preview validation requires a different source map.
+- **Import Road Guides** (OFF): reconstructs **1,110** adjacent Start/End road control pairs (13 TypeName groups in `eamap_sb05_4`) as heightfield-draped alignment strips. Material colors, segment widths and straight interpolation are approximate; original SAGE road meshes and curves are NOT reconstructed.
+- **Use SAGE Terrain Lighting** (OFF): reads four `GlobalLighting` time-of-day presets and uses source Sun, Ambient and Accent1/Accent2 in the compiled atlas terrain shader. Switch time of day or blend strength without changing Unity scene lights.
+
+The toggles default to OFF to preserve previously validated terrain appearance. After installing this branch, select the `.map`, enable an option and Reimport. The Inspector reports the source road count, active cliff cells and lighting preset.
+
+Technical background and visual test checklist: [Roads, cliffs and terrain lighting](docs/Cnc3TerrainRoadsCliffsLighting.md). **Unity compilation and shader rendering are pending live tests.**
 
 ## Generals / Zero Hour — binary W3D import (new in 0.8.0)
 
