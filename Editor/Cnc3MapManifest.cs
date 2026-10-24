@@ -26,6 +26,19 @@ namespace MusafirEx.CncSage.Editor
         public int roadGuideMeshCount;
         public int curvedRoadGuideSegments;
         public string roadGuideStatus;
+        public int roadSurfaceSegments;
+        public int roadSurfaceMeshes;
+        public int roadSurfaceConnectedJunctions;
+        public int roadSurfaceCrossings;
+        public int roadSurfaceFourWayCrossings;
+        public int roadSurfaceResolvedTypes;
+        public int roadSurfaceTexturedTypes;
+        public int roadSurfaceUnresolvedTypes;
+        public int roadSurfaceDuplicateSegments;
+        public string roadSurfaceStatus;
+        public List<Cnc3RoadTypeEntry> roadSurfaceTypes =
+            new List<Cnc3RoadTypeEntry>();
+
 
         public bool terrainAtlasApplied;
         public string terrainAtlasStatus;
@@ -82,6 +95,21 @@ namespace MusafirEx.CncSage.Editor
         // Persist the decoded placements even when placeholder GameObjects
         // are disabled, for later asset-binding in Mode 2.
         public List<Cnc3MapPlacement> placements = new List<Cnc3MapPlacement>();
+    }
+
+    [Serializable]
+    public sealed class Cnc3RoadTypeEntry
+    {
+        public string roadType;
+        public string sourceTextureName;
+        public float roadWidth;
+        public float roadWidthInTexture;
+        public int segmentCount;
+        public int crossingCount;
+        public bool foundRoadDefinition;
+        public bool hasTexture;
+        public Mesh mesh;
+        public Material material;
     }
 
     [Serializable]

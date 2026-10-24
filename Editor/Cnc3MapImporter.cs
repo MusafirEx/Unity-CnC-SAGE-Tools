@@ -12,7 +12,7 @@ namespace MusafirEx.CncSage.Editor
     /// First-pass C&C 3 / Kane's Wrath World Builder .map importer.
     /// Source map remains untouched. Mode 1: terrain and source object placeholders.
     /// </summary>
-    [ScriptedImporter(7, "map")]
+    [ScriptedImporter(8, "map")]
     public sealed class Cnc3MapImporter : ScriptedImporter
     {
         [Tooltip("Reconstruct HeightMapData as tiled, editable Unity mesh sub-assets.")]
@@ -78,6 +78,17 @@ namespace MusafirEx.CncSage.Editor
 
         [Tooltip("Show heightfield-draped guide strips from consecutive RoadType Start/End map objects. These are NOT original textured SAGE roads.")]
         public bool importRoadGuides;
+
+        [Header("Phase 5A - Connected Road Surfaces")]
+        [Tooltip("Create real connected road topology and textured surfaces when user-supplied road definitions and textures are available. Off by default.")]
+        public bool importRoadSurfaces;
+
+        [Tooltip("Optional original road definitions (.ini/.xml as TextAsset) and road material/width overrides.")]
+        public Cnc3RoadLibrary roadLibrary;
+
+        [Tooltip("Optional Assets folder containing original road TGA/DDS textures, matching RoadTemplate.Texture filenames.")]
+        public DefaultAsset roadTextureFolder;
+
 
         [Tooltip("Global width multiplier for approximate road guide previews; exact widths require external SAGE Road assets.")]
         [Range(0.1f, 4f)]
@@ -171,6 +182,8 @@ namespace MusafirEx.CncSage.Editor
                 BuildStandingWater(context, root, map, report);
             if (importRoadGuides)
                 BuildRoadGuides(context, root, map, report);
+            if (importRoadSurfaces)
+                BuildRoadSurfaces(context, root, map, report);
 
             foreach (string warning in map.Warnings)
                 Debug.LogWarning("[C&C SAGE MAP] " + context.assetPath + ": " + warning);
@@ -182,6 +195,204 @@ namespace MusafirEx.CncSage.Editor
 
 
 
+
+
+        private void BuildRoadSurfaces(AssetImportContext context, GameObject root,
+            Cnc3MapReader.Data map, Cnc3MapManifest report)
+        {
+            var warnings = new List<string>();
+            var definitions = roadLibrary != null
+                ? roadLibrary.ReadTemplates(warnings)
+                : new Dictionary<string, Cnc3RoadLibrary.Template>(
+                    StringComparer.OrdinalIgnoreCase);
+            if (roadLibrary != null)
+            {
+                string libraryPath = AssetDatabase.GetAssetPath(roadLibrary);
+                if (!string.IsNullOrEmpty(libraryPath) &&
+                    libraryPath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+                    context.DependsOnSourceAsset(libraryPath);
+                if (roadLibrary.sourceDefinitions != null)
+                {
+                    string definitionsPath = AssetDatabase.GetAssetPath(
+                        roadLibrary.sourceDefinitions);
+                    if (!string.IsNullOrEmpty(definitionsPath) &&
+                        definitionsPath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+                        context.DependsOnSourceAsset(definitionsPath);
+                }
+            }
+
+            var roads = Cnc3RoadSurfaceBuilder.Build(map, definitions,
+                Mathf.Clamp(horizontalScale, 0.001f, 100000f),
+                Mathf.Clamp(verticalScale, 0.00001f, 10000f),
+                flipMapNorthSouth,
+                roadGuideWidthMultiplier, roadGuideSurfaceOffset,
+                maximumRoadGuideSegments);
+            report.roadSurfaceSegments = roads.Segments;
+            report.roadSurfaceConnectedJunctions = roads.TwoWayJunctions;
+            report.roadSurfaceCrossings = roads.Crossings;
+            report.roadSurfaceFourWayCrossings = roads.FourWayCrossings;
+            report.roadSurfaceUnresolvedTypes = roads.UnresolvedTypes;
+            report.roadSurfaceDuplicateSegments = roads.DuplicateSegments;
+            if (roads.Surfaces.Count == 0)
+            {
+                report.roadSurfaceStatus = "No valid road segments found.";
+                return;
+            }
+
+            const string roadShaderPath =
+                "Packages/com.musafirex.cnc-sage-tools/Shaders/Cnc3RoadAtlas.shader";
+            Shader roadShader = AssetDatabase.LoadAssetAtPath<Shader>(roadShaderPath);
+            if (roadShader == null)
+                roadShader = Shader.Find("MusafirEx/SAGE Road Atlas");
+            bool hasShader = roadShader != null && roadShader.isSupported;
+            if (hasShader) context.DependsOnSourceAsset(roadShaderPath);
+            bool srp = GraphicsSettings.currentRenderPipeline != null;
+            Shader previewShader = srp
+                ? (Shader.Find("Universal Render Pipeline/Unlit") ??
+                    Shader.Find("HDRP/Unlit") ??
+                    Shader.Find("Unlit/Color"))
+                : (Shader.Find("Unlit/Color") ?? Shader.Find("Standard"));
+            if (!hasShader && (previewShader == null || !previewShader.isSupported))
+            {
+                report.roadSurfaceStatus = "No compatible road surface shader found.";
+                return;
+            }
+
+            Dictionary<string, Texture2D> imageIndex =
+                IndexRoadTextures(context, context.assetPath);
+            var holder = new GameObject("SAGE_RoadSurfaces_Phase5A").transform;
+            holder.SetParent(root.transform, false);
+            int counter = 0;
+            foreach (var road in roads.Surfaces)
+            {
+                Texture2D texture = road.RoadTexture;
+                string rawName = road.SourceTextureName;
+                if (texture == null && !string.IsNullOrWhiteSpace(rawName))
+                    imageIndex.TryGetValue(
+                        Path.GetFileNameWithoutExtension(rawName).ToLowerInvariant(),
+                        out texture);
+                if (texture != null)
+                {
+                    string texPath = AssetDatabase.GetAssetPath(texture);
+                    if (!string.IsNullOrEmpty(texPath) &&
+                        texPath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+                        context.DependsOnSourceAsset(texPath);
+                }
+
+                var material = new Material(hasShader ? roadShader : previewShader)
+                {
+                    name = "SAGE_RoadSurface_" + Cnc3MapRoadBuilder.Sanitize(road.TypeName)
+                };
+                Color tint = RoadPreviewTint(road.TypeName);
+                if (hasShader)
+                {
+                    material.SetFloat("_UseRoadTexture", texture != null ? 1f : 0f);
+                    material.SetFloat("_WidthInTexture", road.WidthInTexture);
+                    material.SetColor("_Color", texture != null ? Color.white : tint);
+                    if (texture != null)
+                        material.SetTexture("_MainTex", texture);
+                }
+                else
+                {
+                    if (material.HasProperty("_Color"))
+                        material.SetColor("_Color", tint);
+                    if (material.HasProperty("_BaseColor"))
+                        material.SetColor("_BaseColor", tint);
+                }
+
+                context.AddObjectToAsset("SAGE_RoadSurfaceMesh_" + counter, road.Mesh);
+                context.AddObjectToAsset("SAGE_RoadSurfaceMaterial_" + counter, material);
+                var go = new GameObject("RoadSurface_" +
+                    Cnc3MapRoadBuilder.Sanitize(road.TypeName));
+                go.transform.SetParent(holder, false);
+                go.AddComponent<MeshFilter>().sharedMesh = road.Mesh;
+                go.AddComponent<MeshRenderer>().sharedMaterial = material;
+
+                report.roadSurfaceTypes.Add(new Cnc3RoadTypeEntry
+                {
+                    roadType = road.TypeName,
+                    sourceTextureName = rawName,
+                    roadWidth = road.RoadWidth,
+                    roadWidthInTexture = road.WidthInTexture,
+                    segmentCount = road.Segments,
+                    crossingCount = road.Crossings,
+                    foundRoadDefinition = road.HasDefinition,
+                    hasTexture = hasShader && texture != null,
+                    mesh = road.Mesh,
+                    material = material
+                });
+                if (road.HasDefinition) report.roadSurfaceResolvedTypes++;
+                if (hasShader && texture != null) report.roadSurfaceTexturedTypes++;
+                counter++;
+            }
+            report.roadSurfaceMeshes = counter;
+            report.roadSurfaceStatus = counter + " network road surfaces, " +
+                roads.Segments + " segments, " + roads.TwoWayJunctions +
+                " degree-2 junctions and " + roads.Crossings +
+                " crossings; " + report.roadSurfaceResolvedTypes +
+                " styles defined, " + report.roadSurfaceTexturedTypes +
+                " styles textured. Three-/four-way pads and curve geometry " +
+                "are preliminary; final SAGE road intersections are Phase 5B.";
+            foreach (string warning in warnings)
+                Debug.LogWarning("[C&C SAGE ROADS] " + warning);
+            Debug.Log("[C&C SAGE ROADS] " + context.assetPath + ": " +
+                report.roadSurfaceStatus);
+        }
+
+        private Dictionary<string, Texture2D> IndexRoadTextures(
+            AssetImportContext context, string mapPath)
+        {
+            var output = new Dictionary<string, Texture2D>(
+                StringComparer.OrdinalIgnoreCase);
+            var searchFolders = new List<string>();
+            string mapFolder = Path.GetDirectoryName(mapPath);
+            if (!string.IsNullOrEmpty(mapFolder) &&
+                AssetDatabase.IsValidFolder(mapFolder))
+                searchFolders.Add(mapFolder);
+            if (roadLibrary != null && roadLibrary.sourceDefinitions != null)
+            {
+                string defFolder = Path.GetDirectoryName(AssetDatabase.GetAssetPath(
+                    roadLibrary.sourceDefinitions));
+                if (!string.IsNullOrEmpty(defFolder) &&
+                    AssetDatabase.IsValidFolder(defFolder) &&
+                    !searchFolders.Contains(defFolder))
+                    searchFolders.Add(defFolder);
+            }
+            if (roadTextureFolder != null)
+            {
+                string candidate = AssetDatabase.GetAssetPath(roadTextureFolder);
+                if (!string.IsNullOrEmpty(candidate) &&
+                    AssetDatabase.IsValidFolder(candidate) &&
+                    !searchFolders.Contains(candidate))
+                    searchFolders.Add(candidate);
+            }
+            foreach (string folder in searchFolders)
+            {
+                string[] guids = AssetDatabase.FindAssets("t:Texture2D",
+                    new[] { folder });
+                foreach (string guid in guids)
+                {
+                    string assetPath = AssetDatabase.GUIDToAssetPath(guid);
+                    if (string.IsNullOrEmpty(assetPath)) continue;
+                    string key = Path.GetFileNameWithoutExtension(assetPath);
+                    if (string.IsNullOrEmpty(key) || output.ContainsKey(key)) continue;
+                    Texture2D image = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+                    if (image != null) output.Add(key, image);
+                }
+            }
+            return output;
+        }
+
+        private static Color RoadPreviewTint(string name)
+        {
+            if (name.IndexOf("Marking", StringComparison.OrdinalIgnoreCase) >= 0)
+                return new Color(0.91f, 0.83f, 0.42f, 1f);
+            if (name.IndexOf("Sidewalk", StringComparison.OrdinalIgnoreCase) >= 0)
+                return new Color(0.53f, 0.53f, 0.51f, 1f);
+            if (name.IndexOf("Dirt", StringComparison.OrdinalIgnoreCase) >= 0)
+                return new Color(0.42f, 0.32f, 0.24f, 1f);
+            return new Color(0.29f, 0.31f, 0.34f, 1f);
+        }
 
         private void BuildRoadGuides(AssetImportContext context, GameObject root,
             Cnc3MapReader.Data map, Cnc3MapManifest report)
@@ -816,6 +1027,11 @@ namespace MusafirEx.CncSage.Editor
             EditorGUILayout.PropertyField(serializedObject.FindProperty("lightingTimeOverride"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("terrainLightingStrength"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("importRoadGuides"));
+            EditorGUILayout.Space(6);
+            EditorGUILayout.LabelField("Phase 5A — Connected Road Surfaces", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("importRoadSurfaces"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("roadLibrary"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("roadTextureFolder"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("roadGuideWidthMultiplier"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("roadGuideSurfaceOffset"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("maximumRoadGuideSegments"));
@@ -849,6 +1065,20 @@ namespace MusafirEx.CncSage.Editor
                     EditorGUILayout.LabelField("Road Control Points", report.roadSourceControlCount.ToString("N0"));
                     EditorGUILayout.LabelField("Road Guide Segments", report.roadGuideSegments.ToString("N0"));
                     EditorGUILayout.LabelField("Road Preview Meshes", report.roadGuideMeshCount.ToString("N0"));
+                    EditorGUILayout.LabelField("Road Surface Segments",
+                        report.roadSurfaceSegments.ToString("N0"));
+                    EditorGUILayout.LabelField("Road Surface Meshes",
+                        report.roadSurfaceMeshes.ToString("N0"));
+                    EditorGUILayout.LabelField("Two-Way Road Junctions",
+                        report.roadSurfaceConnectedJunctions.ToString("N0"));
+                    EditorGUILayout.LabelField("Road Crossings",
+                        report.roadSurfaceCrossings.ToString("N0"));
+                    EditorGUILayout.LabelField("Road Templates Matched",
+                        report.roadSurfaceResolvedTypes.ToString("N0"));
+                    EditorGUILayout.LabelField("Road Types Textured",
+                        report.roadSurfaceTexturedTypes.ToString("N0"));
+                    if (!string.IsNullOrEmpty(report.roadSurfaceStatus))
+                        EditorGUILayout.HelpBox(report.roadSurfaceStatus, MessageType.Info);
                     if (!string.IsNullOrEmpty(report.roadGuideStatus))
                         EditorGUILayout.HelpBox(report.roadGuideStatus, MessageType.Info);
                     EditorGUILayout.LabelField("Standing Water Areas", report.standingWaterCount.ToString());
