@@ -25,6 +25,12 @@ namespace MusafirEx.CncSage.Editor
         public int terrainThreeWayBlendCells;
         public string terrainBlendStatus;
         public int objectCount;
+        public int standingWaterCount;
+        public int standingWaterGenerated;
+        public bool globalWaterReflectionEnabled;
+        public float globalWaterReflectionHeight;
+        public List<Cnc3StandingWaterEntry> standingWaters =
+            new List<Cnc3StandingWaterEntry>();
         public int objectMarkerCount;
         public int distinctObjectTypes;
         public bool wasCompressed;
@@ -63,6 +69,25 @@ namespace MusafirEx.CncSage.Editor
         // Persist the decoded placements even when placeholder GameObjects
         // are disabled, for later asset-binding in Mode 2.
         public List<Cnc3MapPlacement> placements = new List<Cnc3MapPlacement>();
+    }
+
+    [Serializable]
+    public sealed class Cnc3StandingWaterEntry
+    {
+        public uint uniqueId;
+        public string name;
+        public string layerName;
+        public uint sageHeight;
+        public int pointCount;
+        public float uvScrollSpeed;
+        public bool additive;
+        public string bumpMap;
+        public string skyTexture;
+        public string fxShader;
+        public string depthColors;
+        public bool generated;
+        public Mesh waterMesh;
+        public Material previewMaterial;
     }
 
     [Serializable]

@@ -12,7 +12,7 @@ namespace MusafirEx.CncSage.Editor
     /// First-pass C&C 3 / Kane's Wrath World Builder .map importer.
     /// Source map remains untouched. Mode 1: terrain and source object placeholders.
     /// </summary>
-    [ScriptedImporter(5, "map")]
+    [ScriptedImporter(6, "map")]
     public sealed class Cnc3MapImporter : ScriptedImporter
     {
         [Tooltip("Reconstruct HeightMapData as tiled, editable Unity mesh sub-assets.")]
@@ -61,6 +61,20 @@ namespace MusafirEx.CncSage.Editor
         [Tooltip("Blend secondary and three-way terrain texture layers using SAGE blend directions. Requires the compiled diffuse atlas and bundled SAGE blend shader.")]
         public bool renderTerrainBlending = true;
 
+        [Header("Mode 3 - Standing Water Preview")]
+        [Tooltip("Create Unity water surfaces from StandingWaterAreas in the source .map.")]
+        public bool importStandingWater = true;
+
+        [Tooltip("Base color and transparency for preview water; original SAGE shaders are not reproduced.")]
+        public Color waterTint = new Color(0.12f, 0.35f, 0.46f, 0.62f);
+
+        [Tooltip("Multiplier applied to the original water UV scroll speed.")]
+        [Min(0f)]
+        public float waterScrollMultiplier = 1f;
+
+        [Tooltip("Optional custom water material; cloned per imported source water area.")]
+        public Material waterPreviewMaterial;
+
         public override void OnImportAsset(AssetImportContext context)
         {
             Cnc3MapReader.Data map = Cnc3MapReader.Read(context.assetPath);
@@ -78,6 +92,26 @@ namespace MusafirEx.CncSage.Editor
             report.sections = map.SectionNames.ToArray();
             report.terrainGenerated = importTerrain;
             report.objectsGenerated = importObjects;
+            report.standingWaterCount = map.StandingWaters.Count;
+            report.globalWaterReflectionEnabled = map.ReflectionEnabled;
+            report.globalWaterReflectionHeight = map.ReflectionPlaneZ;
+            foreach (Cnc3MapReader.WaterArea area in map.StandingWaters)
+            {
+                report.standingWaters.Add(new Cnc3StandingWaterEntry
+                {
+                    uniqueId = area.UniqueId,
+                    name = area.Name,
+                    layerName = area.LayerName,
+                    sageHeight = area.WaterHeight,
+                    pointCount = area.Points == null ? 0 : area.Points.Length,
+                    uvScrollSpeed = area.UvScrollSpeed,
+                    additive = area.Additive,
+                    bumpMap = area.BumpMap,
+                    skyTexture = area.SkyTexture,
+                    fxShader = area.FxShader,
+                    depthColors = area.DepthColors
+                });
+            }
             report.objectCount = map.Objects.Count;
             var types = new HashSet<string>(StringComparer.Ordinal);
             foreach (var item in map.Objects)
@@ -103,6 +137,8 @@ namespace MusafirEx.CncSage.Editor
                 BuildTerrain(context, root, map, report);
             if (importObjects)
                 report.objectMarkerCount = BuildObjectPlaceholders(root, map);
+            if (importStandingWater)
+                BuildStandingWater(context, root, map, report);
 
             foreach (string warning in map.Warnings)
                 Debug.LogWarning("[C&C SAGE MAP] " + context.assetPath + ": " + warning);
@@ -112,6 +148,89 @@ namespace MusafirEx.CncSage.Editor
                 " source object placements (" + (importObjects ? "created" : "metadata only") + ").");
         }
 
+
+
+        private void BuildStandingWater(AssetImportContext context,
+            GameObject root, Cnc3MapReader.Data map, Cnc3MapManifest report)
+        {
+            if (map.StandingWaters.Count == 0) return;
+            const string waterShaderPath =
+                "Packages/com.musafirex.cnc-sage-tools/Shaders/Cnc3WaterPreview.shader";
+            Shader waterShader = AssetDatabase.LoadAssetAtPath<Shader>(waterShaderPath);
+            if (waterShader != null)
+                context.DependsOnSourceAsset(waterShaderPath);
+            if (waterShader == null || !waterShader.isSupported)
+                waterShader = Shader.Find("MusafirEx/SAGE Water Preview");
+            if (waterShader == null || !waterShader.isSupported)
+                waterShader = Shader.Find("Unlit/Transparent") ??
+                    Shader.Find("Universal Render Pipeline/Unlit") ??
+                    Shader.Find("Standard");
+            if (waterShader == null)
+            {
+                Debug.LogWarning("[C&C SAGE WATER] No supported water preview shader.");
+                return;
+            }
+            if (waterPreviewMaterial != null)
+            {
+                string materialPath = AssetDatabase.GetAssetPath(waterPreviewMaterial);
+                if (!string.IsNullOrEmpty(materialPath) &&
+                    materialPath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+                    context.DependsOnSourceAsset(materialPath);
+            }
+
+            Transform group = new GameObject("SAGE_WaterAreas").transform;
+            group.SetParent(root.transform, false);
+            float hScale = Mathf.Clamp(horizontalScale, 0.001f, 100000f);
+            float vScale = Mathf.Clamp(verticalScale, 0.00001f, 10000f);
+            float speedMultiplier = Mathf.Clamp(waterScrollMultiplier, 0f, 100f);
+            for (int i = 0; i < map.StandingWaters.Count; i++)
+            {
+                var water = map.StandingWaters[i];
+                Mesh mesh;
+                string error;
+                if (!Cnc3MapWaterBuilder.TryBuild(water, map.Height,
+                    hScale, vScale, flipMapNorthSouth, out mesh, out error))
+                {
+                    Debug.LogWarning("[C&C SAGE WATER] Skipping " + water.Name +
+                        " #" + water.UniqueId + ": " + error);
+                    continue;
+                }
+
+                var material = waterPreviewMaterial != null
+                    ? new Material(waterPreviewMaterial)
+                    : new Material(waterShader);
+                material.name = "CNC3_Water_Material_" + i;
+                if (material.HasProperty("_Color"))
+                    material.SetColor("_Color", waterTint);
+                if (material.HasProperty("_BaseColor"))
+                    material.SetColor("_BaseColor", waterTint);
+                if (material.HasProperty("_Scroll"))
+                    material.SetFloat("_Scroll", water.UvScrollSpeed * speedMultiplier);
+                if (material.HasProperty("_SrcBlend"))
+                    material.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+                if (material.HasProperty("_DstBlend"))
+                    material.SetInt("_DstBlend", water.Additive ?
+                        (int)BlendMode.One : (int)BlendMode.OneMinusSrcAlpha);
+                material.renderQueue = (int)RenderQueue.Transparent;
+                context.AddObjectToAsset("CNC3_WaterMesh_" + i, mesh);
+                context.AddObjectToAsset("CNC3_WaterMaterial_" + i, material);
+
+                string areaName = string.IsNullOrEmpty(water.Name)
+                    ? "Unnamed" : SafeHierarchyName(water.Name);
+                var child = new GameObject("Water_" + water.UniqueId + "_" + areaName);
+                child.transform.SetParent(group, false);
+                child.AddComponent<MeshFilter>().sharedMesh = mesh;
+                child.AddComponent<MeshRenderer>().sharedMaterial = material;
+
+                var entry = report.standingWaters[i];
+                entry.generated = true;
+                entry.waterMesh = mesh;
+                entry.previewMaterial = material;
+                report.standingWaterGenerated++;
+            }
+            Debug.Log("[C&C SAGE WATER] Imported " + report.standingWaterGenerated +
+                "/" + report.standingWaterCount + " standing-water polygon(s).");
+        }
 
         private void ImportCompiledAssets(AssetImportContext context,
             Cnc3MapManifest report)
@@ -513,8 +632,9 @@ namespace MusafirEx.CncSage.Editor
             EditorGUILayout.HelpBox("Mode 1 imports .map terrain and object markers. " +
                 "Mode 2 optionally finds compiled map.bin / map.imp / map.relo / map.manifest " +
                 "and maps 43 source terrain texture IDs into atlas UVs when enabled. " +
-                "Two-way/three-way terrain blending is optional; cliff overlays, roads " +
-                "and compiled object meshes remain unsupported.", MessageType.Info);
+                "Two-way/three-way terrain blending and standing-water polygon previews " +
+                "are supported. Cliff overlays, roads, reflections and compiled object " +
+                "meshes are not yet reconstructed.", MessageType.Info);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("importTerrain"),
                 new GUIContent("Import Terrain"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("horizontalScale"));
@@ -532,6 +652,12 @@ namespace MusafirEx.CncSage.Editor
             EditorGUILayout.PropertyField(serializedObject.FindProperty("inspectCompiledIndexes"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("applyAtlasToTerrain"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("renderTerrainBlending"));
+            EditorGUILayout.Space(8f);
+            EditorGUILayout.LabelField("Mode 3 — Standing Water Preview", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("importStandingWater"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("waterTint"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("waterScrollMultiplier"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("waterPreviewMaterial"));
 
             var importer = target as Cnc3MapImporter;
             if (importer != null)
@@ -547,6 +673,19 @@ namespace MusafirEx.CncSage.Editor
                     EditorGUILayout.LabelField("Heightmap Version", report.heightVersion.ToString());
                     EditorGUILayout.LabelField("Compression", report.wasCompressed ? "EAR / RefPack" : "CkMp");
                     EditorGUILayout.LabelField("Terrain Tiles", report.tileCount.ToString());
+                    EditorGUILayout.LabelField("Standing Water Areas", report.standingWaterCount.ToString());
+                    EditorGUILayout.LabelField("Water Meshes Created", report.standingWaterGenerated.ToString());
+                    EditorGUILayout.LabelField("Global Water Reflection",
+                        report.globalWaterReflectionEnabled ? "Enabled" : "Disabled");
+                    for (int w = 0; w < report.standingWaters.Count; w++)
+                    {
+                        var area = report.standingWaters[w];
+                        if (area == null) continue;
+                        EditorGUILayout.LabelField("Water #" + area.uniqueId,
+                            area.pointCount + " points, Z=" + area.sageHeight +
+                            (area.generated ? " (mesh)" : " (source only)"));
+                    }
+
                     EditorGUILayout.LabelField("Atlas Applied To Terrain",
                         report.terrainAtlasApplied ? "Yes — diffuse atlas" : "No");
                     EditorGUILayout.LabelField("Texture Blending",
