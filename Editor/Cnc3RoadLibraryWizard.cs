@@ -33,7 +33,10 @@ namespace MusafirEx.CncSage.Editor
                     continue;
                 Cnc3RoadLibrary.Template source;
                 bool hasDefinition = definitions.TryGetValue(entry.roadType, out source);
-                if (hasDefinition)
+                // Only enrich from a complete source Road entry. The
+                // library's own generated placeholder is not a definition.
+                if (hasDefinition && source != null &&
+                    !string.IsNullOrWhiteSpace(source.sourceTextureName))
                 {
                     bool generatedGuess =
                         string.IsNullOrWhiteSpace(entry.sourceTextureName) &&
