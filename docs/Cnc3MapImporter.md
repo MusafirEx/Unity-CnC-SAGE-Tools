@@ -40,7 +40,7 @@ Select **Apply** after changing any option. A `Cnc3MapManifest` metadata sub-ass
 1. Update to package v0.9.0 feature branch and confirm no Unity Console C# compilation errors.
 2. In Package Manager choose Samples → Minimal C&C3 Map → Import. Run `python generate_map_samples.py` inside that imported sample folder.
 3. Select `SageTerrainSynthetic.map`, expand imported prefab, inspect hill mesh.
-4. Repeat with `SageTerrainSyntheticCompressed.map`; both should look identical and report 12x10 samples. The manifest distinguishes CkMp and EAR/RefPack compression.
+4. Repeat with `SageTerrainSyntheticCompressed.map` and `SageTerrainSyntheticBackrefs.map`; both should look identical and report 12x10 samples. The manifest distinguishes CkMp and EAR/RefPack compression.
 5. Import one small **real** Tiberium Wars or Kane's Wrath World Builder map. Confirm heightmap dimensions, orientation and topographical heights against World Builder.
 6. Re-verify that W3X and W3D imports still work, and that no map import touches W3X export.
 
