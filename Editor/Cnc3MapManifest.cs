@@ -35,6 +35,9 @@ namespace MusafirEx.CncSage.Editor
         public int roadSurfaceTexturedTypes;
         public int roadSurfaceAutoMatchedTypes;
         public int roadSurfaceIndexedTextures;
+        public int roadFromBigTextureCount;
+        public int roadBigArchiveEntryCount;
+        public string roadBigArchiveStatus;
         public string roadSurfaceSearchedFolders;
         public List<string> roadSurfaceMissingTextures = new List<string>();
         public int roadSurfaceUnresolvedTypes;
