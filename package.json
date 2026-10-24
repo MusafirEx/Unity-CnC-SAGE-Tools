@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Unity C&C SAGE importer for W3X, W3D and experimental C&C3/Kane's Wrath terrain .map previews.",
+  "description": "Unity C&C SAGE W3X/W3D tools with C&C3/KW .map Mode 1 terrain and object placement import.",
   "unity": "2022.3",
   "keywords": [
     "command and conquer",
@@ -30,7 +30,7 @@
     },
     {
       "displayName": "Minimal C&C3 Map",
-      "description": "Synthetic uncompressed and EA RefPack terrain map fixtures (requires Python 3 to generate).",
+      "description": "Three synthetic C&C3 .map files with terrain and two Object records; generated with Python 3.",
       "path": "Samples~/MinimalCnc3Map"
     }
   ]

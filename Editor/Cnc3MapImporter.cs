@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEditor.AssetImporters;
@@ -9,9 +10,9 @@ namespace MusafirEx.CncSage.Editor
 {
     /// <summary>
     /// First-pass C&C 3 / Kane's Wrath World Builder .map importer.
-    /// Source map remains untouched. Current scope: terrain height preview only.
+    /// Source map remains untouched. Mode 1: terrain and source object placeholders.
     /// </summary>
-    [ScriptedImporter(1, "map")]
+    [ScriptedImporter(2, "map")]
     public sealed class Cnc3MapImporter : ScriptedImporter
     {
         [Tooltip("Reconstruct HeightMapData as tiled, editable Unity mesh sub-assets.")]
@@ -30,6 +31,16 @@ namespace MusafirEx.CncSage.Editor
 
         [Tooltip("Include the unplayable border area of the map in the preview.")]
         public bool includeBorder = true;
+
+        [Tooltip("Create named, transform-only GameObject markers for ObjectsList.")]
+        public bool importObjects = true;
+
+        [Tooltip("Group imported markers by their C&C3 object type names.")]
+        public bool groupObjectsByType = true;
+
+        [Tooltip("Safety limit for generated GameObjects. All placements remain in the MapInfo subasset.")]
+        [Min(0)]
+        public int maxObjectPlaceholders = 20000;
 
         [Tooltip("Add MeshColliders to the generated terrain tiles.")]
         public bool addMeshColliders;
@@ -53,16 +64,35 @@ namespace MusafirEx.CncSage.Editor
             report.wasCompressed = map.Compressed;
             report.sections = map.SectionNames.ToArray();
             report.terrainGenerated = importTerrain;
+            report.objectsGenerated = importObjects;
+            report.objectCount = map.Objects.Count;
+            var types = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var item in map.Objects)
+            {
+                types.Add(item.TypeName);
+                report.placements.Add(new Cnc3MapPlacement
+                {
+                    typeName = item.TypeName,
+                    sagePosition = new Vector3(item.X, item.Y, item.Z),
+                    sageAngleRadians = item.Angle,
+                    roadFlags = item.RoadFlags,
+                    recordVersion = item.Version
+                });
+            }
+            report.distinctObjectTypes = types.Count;
             context.AddObjectToAsset("CNC3_Map_Info", report);
 
             if (importTerrain)
                 BuildTerrain(context, root, map, report);
+            if (importObjects)
+                report.objectMarkerCount = BuildObjectPlaceholders(root, map);
 
             foreach (string warning in map.Warnings)
                 Debug.LogWarning("[C&C SAGE MAP] " + context.assetPath + ": " + warning);
             Debug.Log("[C&C SAGE MAP] Imported " + context.assetPath + " " +
                 map.Width + "x" + map.Height + " points, " + report.tileCount +
-                " terrain meshes. Objects/material blending are not reconstructed.");
+                " terrain meshes, " + map.Objects.Count +
+                " source object placements (" + (importObjects ? "created" : "metadata only") + ").");
         }
 
         private void BuildTerrain(AssetImportContext context, GameObject root,
@@ -172,23 +202,65 @@ namespace MusafirEx.CncSage.Editor
             report.terrainWidth = (endX - startX) * hScale;
             report.terrainLength = (endY - startY) * hScale;
         }
-    }
 
-    /// <summary>Persistent map metadata, available as a Unity sub-asset.</summary>
-    public sealed class Cnc3MapManifest : ScriptableObject
-    {
-        public int width;
-        public int height;
-        public int border;
-        public int tileCount;
-        public bool wasCompressed;
-        public bool terrainGenerated;
-        public ushort heightVersion;
-        public float horizontalScale;
-        public float verticalScale;
-        public float terrainWidth;
-        public float terrainLength;
-        public string[] sections;
+        private int BuildObjectPlaceholders(GameObject root, Cnc3MapReader.Data map)
+        {
+            if (map.Objects.Count == 0 || maxObjectPlaceholders <= 0) return 0;
+            Transform holder = new GameObject("SAGE_ObjectPlacements").transform;
+            holder.SetParent(root.transform, false);
+            var groups = new Dictionary<string, Transform>(StringComparer.Ordinal);
+            float xyScale = Mathf.Clamp(horizontalScale, 0.001f, 100000f) / 10f;
+            float baseElevationScale = map.HeightmapVersion >= 5
+                ? 0.0390625f : 0.625f;
+            float vScale = Mathf.Clamp(verticalScale, 0.00001f, 10000f);
+            if (map.HeightmapVersion < 5 && Mathf.Approximately(vScale, 0.0390625f))
+                vScale = 0.625f;
+            float heightRatio = vScale / baseElevationScale;
+
+            int count = Math.Min(map.Objects.Count, maxObjectPlaceholders);
+            if (count < map.Objects.Count)
+                Debug.LogWarning("[C&C SAGE MAP] Object placeholders were limited to " +
+                    count + " GameObjects for Editor performance; all decoded placements " +
+                    "are preserved in Cnc3MapManifest.");
+            for (int i = 0; i < count; i++)
+            {
+                Cnc3MapReader.ObjectData source = map.Objects[i];
+                string typeName = string.IsNullOrWhiteSpace(source.TypeName)
+                    ? "Unnamed" : source.TypeName;
+                Transform parent = holder;
+                if (groupObjectsByType)
+                {
+                    if (!groups.TryGetValue(typeName, out parent))
+                    {
+                        parent = new GameObject(SafeHierarchyName(typeName)).transform;
+                        parent.SetParent(holder, false);
+                        groups.Add(typeName, parent);
+                    }
+                }
+
+                var marker = new GameObject(
+                    i.ToString("D5") + "_" + SafeHierarchyName(typeName));
+                marker.transform.SetParent(parent, false);
+                float sourceY = flipMapNorthSouth
+                    ? (map.Height - 1) * 10f - source.Y : source.Y;
+                marker.transform.localPosition = new Vector3(
+                    source.X * xyScale,
+                    source.Z * heightRatio,
+                    sourceY * xyScale);
+                // SAGE X/Y ground → Unity X/Z ground changes handedness;
+                // negate yaw to preserve the source map's object facing.
+                marker.transform.localRotation = Quaternion.Euler(
+                    0f, -source.Angle * Mathf.Rad2Deg, 0f);
+            }
+            return count;
+        }
+
+        private static string SafeHierarchyName(string text)
+        {
+            return text.Replace('/', '_').Replace('\\', '_')
+                .Replace(':', '_').Replace('\n', '_');
+        }
+
     }
 
     [CustomEditor(typeof(Cnc3MapImporter))]
@@ -198,14 +270,18 @@ namespace MusafirEx.CncSage.Editor
         {
             serializedObject.Update();
             EditorGUILayout.LabelField("C&C 3 World Builder Map", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Terrain-only preview; objects, blend textures, roads, " +
-                "water and scripts are not imported in this milestone.", MessageType.Info);
+            EditorGUILayout.HelpBox("Mode 1: imports the source terrain and object transform " +
+                "placeholders only. No external .bin/.imp/.manifest/.relo files are required. " +
+                "Detailed object models, roads, materials, water and scripts are not built.", MessageType.Info);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("importTerrain"),
                 new GUIContent("Import Terrain"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("horizontalScale"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("verticalScale"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("flipMapNorthSouth"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("includeBorder"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("importObjects"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("groupObjectsByType"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("maxObjectPlaceholders"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("addMeshColliders"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("terrainMaterial"));
 
@@ -223,6 +299,9 @@ namespace MusafirEx.CncSage.Editor
                     EditorGUILayout.LabelField("Heightmap Version", report.heightVersion.ToString());
                     EditorGUILayout.LabelField("Compression", report.wasCompressed ? "EAR / RefPack" : "CkMp");
                     EditorGUILayout.LabelField("Terrain Tiles", report.tileCount.ToString());
+                    EditorGUILayout.LabelField("Object Placements", report.objectCount.ToString());
+                    EditorGUILayout.LabelField("Generated Placeholders", report.objectMarkerCount.ToString());
+                    EditorGUILayout.LabelField("Distinct Object Types", report.distinctObjectTypes.ToString());
                     EditorGUILayout.LabelField("Map Sections", report.sections == null
                         ? "Unknown" : report.sections.Length.ToString());
                     break;

@@ -37,15 +37,29 @@ def create_map():
         + U32(width * height)
         + struct.pack("<" + "H" * len(heights), *heights)
     )
-    # BinaryReader reads names from end of table: IDs 2 then 1.
+    # Three indexed names: Object records are nested inside ObjectsList.
     names = (
-        U32(2)
+        U32(3)
+        + name("Object") + U32(3)
         + name("ObjectsList") + U32(2)
         + name("HeightMapData") + U32(1)
     )
+
+    def placed_object(kind, x, y, z, yaw):
+        encoded = kind.encode("ascii")
+        # World Builder object record v3: Vector3 + radians + road flags
+        # + uint16-prefixed ASCII name + zero optional properties.
+        data = struct.pack("<ffffI", x, y, z, yaw, 0)
+        data += U16(len(encoded)) + encoded
+        return U32(3) + asset(3, data)
+
+    object_data = (
+        placed_object("TestTree", 40, 30, 12, 0)
+        + placed_object("TestBuilding", 60, 50, 18, 1.57)
+    )
     contents = (
         U32(1) + asset(6, height_data)
-        + U32(2) + asset(1, b"\x01\x02\x03\x04")
+        + U32(2) + asset(3, object_data)
     )
     return b"CkMp" + names + contents
 
@@ -126,7 +140,7 @@ def main():
     matched = b"EAR\x00" + U32(len(raw)) + pack_refpack_with_matches(raw)
     (HERE / "SageTerrainSyntheticBackrefs.map").write_bytes(matched)
     print(f"Wrote uncompressed {len(raw)} bytes, literal-compressed {len(packed)}, and backref-compressed {len(matched)}.")
-    print("Both encode the same 12x10, version-6 heightmap and one placeholder object section.")
+    print("All three encode the same 12x10 v6 heightmap and two valid Object v3 placement records.")
 
 
 if __name__ == "__main__":
