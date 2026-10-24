@@ -5,13 +5,15 @@ Shader "MusafirEx/SAGE Water Preview"
         _Color ("Water Tint", Color) = (0.12, 0.35, 0.46, 0.62)
         _Scroll ("Water Ripple Scroll", Float) = 0.01
         _WaveStrength ("Ripple Strength", Range(0, 1)) = 0.18
+        [HideInInspector] _SrcBlend ("Source Blend", Float) = 5
+        [HideInInspector] _DstBlend ("Destination Blend", Float) = 10
     }
     SubShader
     {
         Tags { "Queue"="Transparent" "RenderType"="Transparent" "IgnoreProjector"="True" }
         Pass
         {
-            Blend SrcAlpha OneMinusSrcAlpha
+            Blend [_SrcBlend] [_DstBlend]
             ZWrite Off
             ZTest LEqual
             Cull Off
