@@ -12,7 +12,7 @@ namespace MusafirEx.CncSage.Editor
     /// First-pass C&C 3 / Kane's Wrath World Builder .map importer.
     /// Source map remains untouched. Mode 1: terrain and source object placeholders.
     /// </summary>
-    [ScriptedImporter(6, "map")]
+    [ScriptedImporter(7, "map")]
     public sealed class Cnc3MapImporter : ScriptedImporter
     {
         [Tooltip("Reconstruct HeightMapData as tiled, editable Unity mesh sub-assets.")]
@@ -60,6 +60,36 @@ namespace MusafirEx.CncSage.Editor
 
         [Tooltip("Blend secondary and three-way terrain texture layers using SAGE blend directions. Requires the compiled diffuse atlas and bundled SAGE blend shader.")]
         public bool renderTerrainBlending = true;
+
+        [Header("Mode 4 - Cliffs / Roads / SAGE Lighting")]
+        [Tooltip("Experimental source cliff overlay mapping. Enables only when a source map contains active cliff entries.")]
+        public bool previewCliffTextures;
+
+        [Tooltip("Use the map's terrain sun, ambient, and accent lighting in the atlas shader.")]
+        public bool useSageTerrainLighting;
+
+        [Tooltip("0 uses the map's original time of day; 1/2/3/4 override Morning/Afternoon/Evening/Night.")]
+        [Range(0, 4)]
+        public int lightingTimeOverride;
+
+        [Tooltip("Blend from the original unlit terrain (0) to the source SAGE lighting (1).")]
+        [Range(0f, 1f)]
+        public float terrainLightingStrength = 0.8f;
+
+        [Tooltip("Show heightfield-draped guide strips from consecutive RoadType Start/End map objects. These are NOT original textured SAGE roads.")]
+        public bool importRoadGuides;
+
+        [Tooltip("Global width multiplier for approximate road guide previews; exact widths require external SAGE Road assets.")]
+        [Range(0.1f, 4f)]
+        public float roadGuideWidthMultiplier = 1f;
+
+        [Tooltip("Lift road guides a small distance above terrain to avoid z-fighting.")]
+        [Range(0f, 2f)]
+        public float roadGuideSurfaceOffset = 0.08f;
+
+        [Tooltip("Limit generated preview road segments in Editor.")]
+        [Range(0, 20000)]
+        public int maximumRoadGuideSegments = 5000;
 
         [Header("Mode 3 - Standing Water Preview")]
         [Tooltip("Create Unity water surfaces from StandingWaterAreas in the source .map.")]
@@ -139,6 +169,8 @@ namespace MusafirEx.CncSage.Editor
                 report.objectMarkerCount = BuildObjectPlaceholders(root, map);
             if (importStandingWater)
                 BuildStandingWater(context, root, map, report);
+            if (importRoadGuides)
+                BuildRoadGuides(context, root, map, report);
 
             foreach (string warning in map.Warnings)
                 Debug.LogWarning("[C&C SAGE MAP] " + context.assetPath + ": " + warning);
@@ -149,6 +181,74 @@ namespace MusafirEx.CncSage.Editor
         }
 
 
+
+
+        private void BuildRoadGuides(AssetImportContext context, GameObject root,
+            Cnc3MapReader.Data map, Cnc3MapManifest report)
+        {
+            report.roadSourceControlCount = 0;
+            foreach (var obj in map.Objects)
+                if ((obj.RoadFlags & (2u | 4u)) != 0) report.roadSourceControlCount++;
+            if (maximumRoadGuideSegments <= 0)
+            {
+                report.roadGuideStatus = "Disabled by maximumRoadGuideSegments = 0.";
+                return;
+            }
+            float hScale = Mathf.Clamp(horizontalScale, 0.001f, 100000f);
+            float vScale = Mathf.Clamp(verticalScale, 0.00001f, 10000f);
+            if (map.HeightmapVersion < 5 && Mathf.Approximately(vScale, 0.0390625f))
+                vScale = 0.625f;
+            var groups = Cnc3MapRoadBuilder.Build(map, hScale, vScale,
+                flipMapNorthSouth, roadGuideWidthMultiplier, roadGuideSurfaceOffset,
+                maximumRoadGuideSegments);
+            if (groups.Count == 0)
+            {
+                report.roadGuideStatus = "No consecutive source RoadType Start/End pairs.";
+                return;
+            }
+            Shader shader = Shader.Find("Unlit/Color") ??
+                Shader.Find("Universal Render Pipeline/Unlit") ??
+                Shader.Find("Standard");
+            if (shader == null)
+            {
+                report.roadGuideStatus = "No road preview material shader found.";
+                return;
+            }
+            Transform holder = new GameObject("SAGE_RoadGuides_PreviewOnly").transform;
+            holder.SetParent(root.transform, false);
+            int counter = 0;
+            foreach (var group in groups)
+            {
+                var material = new Material(shader) { name = "SAGE_RoadGuide_" + group.TypeName };
+                bool marking = group.TypeName.IndexOf("Marking",
+                    StringComparison.OrdinalIgnoreCase) >= 0;
+                bool sidewalk = group.TypeName.IndexOf("Sidewalk",
+                    StringComparison.OrdinalIgnoreCase) >= 0;
+                bool dirt = group.TypeName.IndexOf("Dirt",
+                    StringComparison.OrdinalIgnoreCase) >= 0;
+                Color tint = marking ? new Color(0.91f, 0.83f, 0.42f, 1f) :
+                    sidewalk ? new Color(0.53f, 0.53f, 0.51f, 1f) :
+                    dirt ? new Color(0.42f, 0.32f, 0.24f, 1f) :
+                    new Color(0.29f, 0.31f, 0.34f, 1f);
+                if (material.HasProperty("_Color")) material.SetColor("_Color", tint);
+                if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", tint);
+                context.AddObjectToAsset("SAGE_RoadGuideMesh_" + counter, group.Mesh);
+                context.AddObjectToAsset("SAGE_RoadGuideMat_" + counter, material);
+                var child = new GameObject("RoadGuide_" +
+                    Cnc3MapRoadBuilder.Sanitize(group.TypeName));
+                child.transform.SetParent(holder, false);
+                child.AddComponent<MeshFilter>().sharedMesh = group.Mesh;
+                child.AddComponent<MeshRenderer>().sharedMaterial = material;
+                report.roadGuideSegments += group.Segments;
+                report.curvedRoadGuideSegments += group.SourceCurves;
+                counter++;
+            }
+            report.roadGuideMeshCount = counter;
+            report.roadGuideStatus = counter + " guide meshes; " +
+                report.roadGuideSegments + " control-point segments, including " +
+                report.curvedRoadGuideSegments + " flagged curved/angled segments. " +
+                "Geometry and material are approximate; external Road assets required.";
+        }
 
         private void BuildStandingWater(AssetImportContext context,
             GameObject root, Cnc3MapReader.Data map, Cnc3MapManifest report)
@@ -345,6 +445,19 @@ namespace MusafirEx.CncSage.Editor
             }
         }
 
+        private static Color SageRgb(Vector3 value)
+        {
+            return new Color(value.x, value.y, value.z, 1f);
+        }
+
+        private static Vector4 SageDirection(Vector3 source)
+        {
+            Vector3 direction = new Vector3(source.x, source.z, source.y);
+            if (direction.sqrMagnitude < 0.00001f) direction = Vector3.down;
+            direction.Normalize();
+            return new Vector4(direction.x, direction.y, direction.z, 0f);
+        }
+
         private void BuildTerrain(AssetImportContext context, GameObject root,
             Cnc3MapReader.Data map, Cnc3MapManifest report)
         {
@@ -394,9 +507,24 @@ namespace MusafirEx.CncSage.Editor
                     if (map.ThreeWayBlends[i] != 0) report.terrainThreeWayBlendCells++;
                 }
             }
+            report.sourceTimeOfDay = map.SourceTimeOfDay;
+            int chosenTime = lightingTimeOverride >= 1 && lightingTimeOverride <= 4
+                ? lightingTimeOverride : map.SourceTimeOfDay;
+            report.displayedTimeOfDay = chosenTime;
+            bool lightingAvailable = chosenTime >= 1 && chosenTime <= 4 &&
+                map.TerrainLighting[chosenTime - 1] != null;
+            report.cliffMappingCount = map.CliffMappings.Count;
+            if (map.CliffTextureIndices != null)
+                foreach (uint value in map.CliffTextureIndices)
+                    if (value != 0) report.cliffOverlayCellCount++;
+            bool requestLighting = useAtlas && useSageTerrainLighting && lightingAvailable;
+            bool requestCliffs = useAtlas && previewCliffTextures &&
+                report.cliffOverlayCellCount > 0 && report.cliffMappingCount > 0;
+
             Shader blendShader = null;
-            if (useAtlas && renderTerrainBlending &&
-                report.terrainBlendDescriptionCount > 0)
+            if (useAtlas && ((renderTerrainBlending &&
+                report.terrainBlendDescriptionCount > 0) ||
+                requestLighting || requestCliffs))
             {
                 const string packageShader = "Packages/com.musafirex.cnc-sage-tools/Shaders/Cnc3TerrainAtlasBlend.shader";
                 blendShader = AssetDatabase.LoadAssetAtPath<Shader>(packageShader);
@@ -405,9 +533,15 @@ namespace MusafirEx.CncSage.Editor
                 if (blendShader != null)
                     context.DependsOnSourceAsset(packageShader);
             }
-            bool useBlending = blendShader != null && blendShader.isSupported &&
+            bool shaderReady = blendShader != null && blendShader.isSupported;
+            bool useBlending = shaderReady &&
                 useAtlas && renderTerrainBlending && map.Blends != null &&
                 map.ThreeWayBlends != null && map.BlendDescriptions.Count > 0;
+            bool useLighting = shaderReady && requestLighting;
+            bool useCliffs = shaderReady && requestCliffs;
+            bool useCustomShader = useBlending || useLighting || useCliffs;
+            report.cliffPreviewEnabled = useCliffs;
+            report.terrainSageLightingApplied = useLighting;
             report.terrainBlendingApplied = useBlending;
             report.terrainBlendStatus = useBlending
                 ? "Two-way and three-way blending active in SAGE shader."
@@ -426,10 +560,10 @@ namespace MusafirEx.CncSage.Editor
                 // A user-provided .mat must never be changed in place.
                 displayMat = new Material(displayMat)
                 {
-                    name = useBlending ? "CNC3_Terrain_AtlasBlend" :
+                    name = useCustomShader ? "CNC3_Terrain_AtlasBlend" :
                         "CNC3_Atlas_Terrain_Preview"
                 };
-                if (useBlending)
+                if (useCustomShader)
                     displayMat.shader = blendShader;
                 context.AddObjectToAsset("CNC3_Terrain_Atlas_Material", displayMat);
             }
@@ -438,7 +572,7 @@ namespace MusafirEx.CncSage.Editor
                 // Prefer an unlit shader compatible with the current render
                 // pipeline. The Built-In unlit shader can appear pink in URP.
                 bool srp = GraphicsSettings.currentRenderPipeline != null;
-                Shader shader = useBlending ? blendShader : useAtlas
+                Shader shader = useCustomShader ? blendShader : useAtlas
                     ? (srp
                         ? (Shader.Find("Universal Render Pipeline/Unlit") ??
                             Shader.Find("HDRP/Unlit") ??
@@ -463,6 +597,23 @@ namespace MusafirEx.CncSage.Editor
                     context.DependsOnSourceAsset(assetPath);
             }
 
+            if (useCustomShader)
+            {
+                displayMat.SetFloat("_SageUseCliffs", useCliffs ? 1f : 0f);
+                displayMat.SetFloat("_SageLightingStrength",
+                    useLighting ? Mathf.Clamp01(terrainLightingStrength) : 0f);
+                if (useLighting)
+                {
+                    var source = map.TerrainLighting[chosenTime - 1];
+                    displayMat.SetColor("_SageAmbient", SageRgb(source.Sun.Ambient));
+                    displayMat.SetColor("_SageSunColor", SageRgb(source.Sun.Color));
+                    displayMat.SetColor("_SageAccent1Color", SageRgb(source.Accent1.Color));
+                    displayMat.SetColor("_SageAccent2Color", SageRgb(source.Accent2.Color));
+                    displayMat.SetVector("_SageSunDirection", SageDirection(source.Sun.Direction));
+                    displayMat.SetVector("_SageAccent1Direction", SageDirection(source.Accent1.Direction));
+                    displayMat.SetVector("_SageAccent2Direction", SageDirection(source.Accent2.Direction));
+                }
+            }
             if (useAtlas)
             {
                 Texture2D atlas = atlasMapping.BaseAtlas;
@@ -486,7 +637,7 @@ namespace MusafirEx.CncSage.Editor
                 {
                     Mesh texturedMesh = Cnc3TerrainAtlasUv.BuildTile(map, atlasMapping,
                         lowerX, lowerY, tileX, tileY, hScale, vScale,
-                        flipMapNorthSouth, useBlending);
+                        flipMapNorthSouth, useBlending, useCliffs);
                     context.AddObjectToAsset("CNC3_Terrain_" + counter, texturedMesh);
                     var texturedTile = new GameObject(texturedMesh.name);
                     texturedTile.transform.SetParent(terrain, false);
@@ -654,6 +805,16 @@ namespace MusafirEx.CncSage.Editor
             EditorGUILayout.PropertyField(serializedObject.FindProperty("applyAtlasToTerrain"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("renderTerrainBlending"));
             EditorGUILayout.Space(8f);
+            EditorGUILayout.LabelField("Mode 4 — Cliffs, Roads & Lighting", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("previewCliffTextures"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("useSageTerrainLighting"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("lightingTimeOverride"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("terrainLightingStrength"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("importRoadGuides"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("roadGuideWidthMultiplier"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("roadGuideSurfaceOffset"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("maximumRoadGuideSegments"));
+            EditorGUILayout.Space(8f);
             EditorGUILayout.LabelField("Mode 3 — Standing Water Preview", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("importStandingWater"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("waterTint"));
@@ -674,6 +835,17 @@ namespace MusafirEx.CncSage.Editor
                     EditorGUILayout.LabelField("Heightmap Version", report.heightVersion.ToString());
                     EditorGUILayout.LabelField("Compression", report.wasCompressed ? "EAR / RefPack" : "CkMp");
                     EditorGUILayout.LabelField("Terrain Tiles", report.tileCount.ToString());
+                    EditorGUILayout.LabelField("Cliff Mapping Records", report.cliffMappingCount.ToString("N0"));
+                    EditorGUILayout.LabelField("Active Cliff Cells", report.cliffOverlayCellCount.ToString("N0"));
+                    EditorGUILayout.LabelField("Cliff Texture Preview", report.cliffPreviewEnabled ? "Active (experimental)" : "Off");
+                    EditorGUILayout.LabelField("Source Time of Day", report.sourceTimeOfDay.ToString());
+                    EditorGUILayout.LabelField("Lighting Preset Used", report.displayedTimeOfDay.ToString());
+                    EditorGUILayout.LabelField("SAGE Terrain Lighting", report.terrainSageLightingApplied ? "Active" : "Off");
+                    EditorGUILayout.LabelField("Road Control Points", report.roadSourceControlCount.ToString("N0"));
+                    EditorGUILayout.LabelField("Road Guide Segments", report.roadGuideSegments.ToString("N0"));
+                    EditorGUILayout.LabelField("Road Preview Meshes", report.roadGuideMeshCount.ToString("N0"));
+                    if (!string.IsNullOrEmpty(report.roadGuideStatus))
+                        EditorGUILayout.HelpBox(report.roadGuideStatus, MessageType.Info);
                     EditorGUILayout.LabelField("Standing Water Areas", report.standingWaterCount.ToString());
                     EditorGUILayout.LabelField("Water Meshes Created", report.standingWaterGenerated.ToString());
                     EditorGUILayout.LabelField("Global Water Reflection",
