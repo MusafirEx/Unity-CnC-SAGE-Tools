@@ -15,6 +15,18 @@ namespace MusafirEx.CncSage.Editor
         public int height;
         public int border;
         public int tileCount;
+        public int cliffMappingCount;
+        public int cliffOverlayCellCount;
+        public bool cliffPreviewEnabled;
+        public bool terrainSageLightingApplied;
+        public int sourceTimeOfDay;
+        public int displayedTimeOfDay;
+        public int roadSourceControlCount;
+        public int roadGuideSegments;
+        public int roadGuideMeshCount;
+        public int curvedRoadGuideSegments;
+        public string roadGuideStatus;
+
         public bool terrainAtlasApplied;
         public string terrainAtlasStatus;
         public int terrainSourceTextureCount;
