@@ -23,8 +23,10 @@ namespace MusafirEx.CncSage.Editor
         {
             public string roadType;
             public string sourceTextureName;
+            public string normalTextureName;
+            public float priority;
             [Min(0.01f)] public float roadWidth = 35f;
-            [Range(0.05f, 1f)] public float roadWidthInTexture = 0.9f;
+            [Range(0.05f, 2f)] public float roadWidthInTexture = 0.9f;
             public Texture2D texture;
         }
 
@@ -66,7 +68,38 @@ namespace MusafirEx.CncSage.Editor
                     warnings.Add("Invalid road definition " + road.roadType);
                     continue;
                 }
-                templates[road.roadType.Trim()] = road;
+                string typeName = road.roadType.Trim();
+                Template source;
+                if (!templates.TryGetValue(typeName, out source))
+                {
+                    templates[typeName] = road;
+                    continue;
+                }
+
+                // Phase 5A's initial "Create Road Library From Map" produced
+                // guesses with no Texture name, WidthInTexture=1, and the
+                // GuessSourceWidth value. These were not original definitions.
+                // Once a real Roads.xml is supplied, upgrade those guesses
+                // in-memory while retaining any manually linked Texture2D.
+                // Never mutate serialized user assets during a .map import.
+                bool generatedGuess = string.IsNullOrWhiteSpace(road.sourceTextureName) &&
+                    Mathf.Approximately(road.roadWidthInTexture, 1f) &&
+                    Mathf.Approximately(road.roadWidth,
+                        Cnc3MapRoadBuilder.GuessSourceWidth(typeName));
+
+                templates[typeName] = new Template
+                {
+                    roadType = typeName,
+                    sourceTextureName = string.IsNullOrWhiteSpace(road.sourceTextureName)
+                        ? source.sourceTextureName : road.sourceTextureName,
+                    normalTextureName = string.IsNullOrWhiteSpace(road.normalTextureName)
+                        ? source.normalTextureName : road.normalTextureName,
+                    roadWidth = generatedGuess ? source.roadWidth : road.roadWidth,
+                    roadWidthInTexture = generatedGuess
+                        ? source.roadWidthInTexture : road.roadWidthInTexture,
+                    priority = road.priority != 0 ? road.priority : source.priority,
+                    texture = road.texture != null ? road.texture : source.texture
+                };
             }
             return templates;
         }
@@ -163,6 +196,11 @@ namespace MusafirEx.CncSage.Editor
                     Assign(record, "RoadWidthInTexture",
                         reader.GetAttribute("RoadWidthInTexture") ??
                         reader.GetAttribute("roadWidthInTexture"));
+                    Assign(record, "NormalTexture",
+                        reader.GetAttribute("NormalTexture") ??
+                        reader.GetAttribute("normalTexture"));
+                    Assign(record, "Priority",
+                        reader.GetAttribute("Priority") ?? reader.GetAttribute("priority"));
                     if (Valid(record)) output[record.roadType] = record;
                     else warnings.Add("Skipped invalid road XML record " + roadName);
                 }
@@ -177,6 +215,11 @@ namespace MusafirEx.CncSage.Editor
                 item.sourceTextureName = value.Trim('"');
                 return;
             }
+            if (key.Equals("NormalTexture", StringComparison.OrdinalIgnoreCase))
+            {
+                item.normalTextureName = value.Trim('"');
+                return;
+            }
             float number;
             if (!float.TryParse(value, NumberStyles.Float,
                 CultureInfo.InvariantCulture, out number)) return;
@@ -184,6 +227,8 @@ namespace MusafirEx.CncSage.Editor
                 item.roadWidth = number;
             else if (key.Equals("RoadWidthInTexture", StringComparison.OrdinalIgnoreCase))
                 item.roadWidthInTexture = number;
+            else if (key.Equals("Priority", StringComparison.OrdinalIgnoreCase))
+                item.priority = number;
         }
     }
 }
