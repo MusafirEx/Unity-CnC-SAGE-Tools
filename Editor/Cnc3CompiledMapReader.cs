@@ -188,12 +188,13 @@ namespace MusafirEx.CncSage.Editor
             int baseOffset = image.DataOffset;
             int blocksWide = (image.Width + 3) / 4;
             int blocksHigh = (image.Height + 3) / 4;
+            var alpha = new int[8];
+            var palette = new Color32[4];
             for (int by = 0; by < blocksHigh; by++)
             for (int bx = 0; bx < blocksWide; bx++)
             {
                 int at = baseOffset + (by * blocksWide + bx) * 16;
                 int a0 = data[at], a1 = data[at + 1];
-                int[] alpha = new int[8];
                 alpha[0] = a0;
                 alpha[1] = a1;
                 if (a0 > a1)
@@ -214,7 +215,6 @@ namespace MusafirEx.CncSage.Editor
                     alphaMask |= (ulong)data[at + 2 + k] << (8 * k);
                 Color32 c0 = DecodeRgb565(U16(data, at + 8));
                 Color32 c1 = DecodeRgb565(U16(data, at + 10));
-                var palette = new Color32[4];
                 palette[0] = c0;
                 palette[1] = c1;
                 palette[2] = new Color32(
