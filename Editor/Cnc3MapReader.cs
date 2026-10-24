@@ -12,6 +12,14 @@ namespace MusafirEx.CncSage.Editor
     /// </summary>
     internal static class Cnc3MapReader
     {
+        internal sealed class TerrainBlend
+        {
+            internal int SecondaryTile;
+            internal byte Direction;
+            internal byte Flags;
+            internal bool TwoSided;
+        }
+
         internal sealed class TerrainTexture
         {
             internal string Name;
@@ -40,6 +48,9 @@ namespace MusafirEx.CncSage.Editor
             internal ushort HeightmapVersion;
             internal ushort[] Elevations;
             internal ushort[] TileValues;
+            internal uint[] Blends;
+            internal uint[] ThreeWayBlends;
+            internal readonly List<TerrainBlend> BlendDescriptions = new List<TerrainBlend>();
             internal readonly List<TerrainTexture> TerrainTextures = new List<TerrainTexture>();
             internal bool Compressed;
             internal readonly List<ObjectData> Objects = new List<ObjectData>();
@@ -151,10 +162,16 @@ namespace MusafirEx.CncSage.Editor
             for (int i = 0; i < count; i++)
                 tiles[i] = reader.ReadUInt16();
 
-            // Three per-cell grids: blend, three-way-blend and cliff texture.
-            // The C&C 3 version-24 grid stores 16-bit values.
+            // C&C3 v24 uses 16-bit blend, three-way and cliff indices.
+            // Earlier version ranges 14..23 use 32-bit indices.
             int bits = version >= 14 && version < 24 ? 32 : 16;
-            SkipTerrainBytes(stream, stop, (long)count * (bits / 8) * 3);
+            var blendIndices = new uint[count];
+            var threeWayIndices = new uint[count];
+            for (int i = 0; i < count; i++)
+                blendIndices[i] = bits == 16 ? reader.ReadUInt16() : reader.ReadUInt32();
+            for (int i = 0; i < count; i++)
+                threeWayIndices[i] = bits == 16 ? reader.ReadUInt16() : reader.ReadUInt32();
+            SkipTerrainBytes(stream, stop, (long)count * (bits / 8)); // CliffTextures
             int rowBits = ((width + 7) / 8) * height;
             if (version > 6)
             {
@@ -174,8 +191,8 @@ namespace MusafirEx.CncSage.Editor
             if (stop - stream.Position < 16)
                 throw new InvalidDataException("BlendTileData texture index header is truncated.");
             uint textureCellCount = reader.ReadUInt32();
-            reader.ReadUInt32(); // blend descriptions count
-            reader.ReadUInt32(); // cliff mapping count
+            uint encodedBlendCount = reader.ReadUInt32();
+            uint encodedCliffCount = reader.ReadUInt32();
             uint textureCount = reader.ReadUInt32();
             if (textureCount < 1 || textureCount > 2048)
             {
@@ -216,6 +233,56 @@ namespace MusafirEx.CncSage.Editor
                 if (tile >= tilesIndexed)
                     throw new InvalidDataException("A terrain cell references an unknown tile.");
             output.TileValues = tiles;
+
+            // Source stores the number of blends plus a reserved 0 index.
+            // Each record is fixed 18 bytes: u32 secondary texture-tile ID,
+            // 4 direction bytes, u8 flags, u8 two-sided, and two u32 sentinels.
+            int blendCount = encodedBlendCount > 0
+                ? checked((int)encodedBlendCount - 1) : 0;
+            if (blendCount > 65535 || (long)blendCount * 18 + 8 >
+                stop - stream.Position)
+                throw new InvalidDataException("Blend description table exceeds source map bounds.");
+            uint magic1 = reader.ReadUInt32();
+            uint magic2 = reader.ReadUInt32();
+            if (magic2 != 0)
+                throw new InvalidDataException("Unexpected BlendTileData texture-table marker.");
+            for (int i = 0; i < blendCount; i++)
+            {
+                uint secondaryTile = reader.ReadUInt32();
+                int direction = 0;
+                for (int j = 0; j < 4; j++)
+                {
+                    byte flag = reader.ReadByte();
+                    if (flag > 1)
+                        throw new InvalidDataException("Unexpected SAGE blend direction encoding.");
+                    if (flag != 0) direction |= 1 << j;
+                }
+                byte flags = reader.ReadByte();
+                bool twoSided = reader.ReadByte() != 0;
+                uint marker1 = reader.ReadUInt32();
+                uint marker2 = reader.ReadUInt32();
+                if (secondaryTile >= tilesIndexed || 
+                    (direction != 1 && direction != 2 && direction != 4 && direction != 8) ||
+                    marker2 != 0x7ADA0000)
+                    throw new InvalidDataException("Unsupported BlendDescription record.");
+                output.BlendDescriptions.Add(new TerrainBlend
+                {
+                    SecondaryTile = checked((int)secondaryTile),
+                    Direction = checked((byte)direction),
+                    Flags = flags,
+                    TwoSided = twoSided
+                });
+            }
+            foreach (uint blendIndex in blendIndices)
+                if (blendIndex > blendCount)
+                    throw new InvalidDataException("Blend grid references invalid description ID.");
+            foreach (uint blendIndex in threeWayIndices)
+                if (blendIndex > blendCount)
+                    throw new InvalidDataException("ThreeWayBlends references invalid description ID.");
+            output.Blends = blendIndices;
+            output.ThreeWayBlends = threeWayIndices;
+            if (encodedCliffCount > 1)
+                output.Warnings.Add("CliffTextureMappings are not decoded by the terrain shader.");
         }
 
         private static void SkipTerrainBytes(Stream stream, long limit, long length)
