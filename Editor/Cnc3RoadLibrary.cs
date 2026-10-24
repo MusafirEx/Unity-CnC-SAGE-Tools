@@ -41,7 +41,11 @@ namespace MusafirEx.CncSage.Editor
             var templates = new Dictionary<string, Template>(StringComparer.OrdinalIgnoreCase);
             if (sourceDefinitions != null)
             {
-                string content = sourceDefinitions.text;
+                // EA's Roads.xml begins with a UTF-8 BOM. Unity TextAsset
+                // can preserve it as U+FEFF, which otherwise breaks XML
+                // detection and XmlReader when reading from a StringReader.
+                string content = sourceDefinitions.text.TrimStart(
+                    '\uFEFF', '\u200B', ' ', '\t', '\r', '\n');
                 if (content.Length > 4 * 1024 * 1024)
                     warnings.Add("Road template file exceeds the 4 MB safety limit.");
                 else
