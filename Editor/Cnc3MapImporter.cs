@@ -265,13 +265,21 @@ namespace MusafirEx.CncSage.Editor
             }
             if (displayMat == null)
             {
+                // Prefer an unlit shader compatible with the current render
+                // pipeline. The Built-In unlit shader can appear pink in URP.
+                bool srp = GraphicsSettings.currentRenderPipeline != null;
                 Shader shader = useAtlas
-                    ? (Shader.Find("Unlit/Texture") ??
-                        Shader.Find("Universal Render Pipeline/Unlit") ??
-                        Shader.Find("Standard"))
-                    : (Shader.Find("Standard") ??
-                        Shader.Find("Universal Render Pipeline/Lit") ??
-                        Shader.Find("Unlit/Color"));
+                    ? (srp
+                        ? (Shader.Find("Universal Render Pipeline/Unlit") ??
+                            Shader.Find("HDRP/Unlit") ??
+                            Shader.Find("Unlit/Texture"))
+                        : (Shader.Find("Unlit/Texture") ??
+                            Shader.Find("Standard")))
+                    : (srp
+                        ? (Shader.Find("Universal Render Pipeline/Lit") ??
+                            Shader.Find("HDRP/Lit") ??
+                            Shader.Find("Standard"))
+                        : Shader.Find("Standard"));
                 if (shader == null)
                     throw new InvalidDataException("No suitable Unity terrain preview shader.");
                 displayMat = new Material(shader) { name = "CNC3_Terrain_Preview" };
