@@ -46,6 +46,7 @@ namespace MusafirEx.CncSage.Editor
         // Optional compiled map.bin diagnostics: no modification to external files.
         public bool hasCompiledBin;
         public long compiledBinSize;
+        public uint compiledStreamId;
         public int compiledMetadataBytes;
         public int compiledTextureCount;
         public int compiledImportAddresses;

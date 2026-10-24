@@ -66,6 +66,17 @@ namespace MusafirEx.CncSage.Editor
         internal static Summary Inspect(string folder, long binLength)
         {
             var summary = new Summary();
+            // This is unique to the compiled stream. The same identifier
+            // appears at offset 0 in .bin/.imp/.relo and +4 in .manifest.
+            // Read the current map, never compare against a global constant.
+            uint currentSignature;
+            using (var file = File.OpenRead(Path.Combine(folder, "map.bin")))
+            using (var reader = new BinaryReader(file))
+            {
+                if (file.Length < 4 || file.Length != binLength)
+                    throw new InvalidDataException("map.bin stream size is invalid.");
+                currentSignature = reader.ReadUInt32();
+            }
             string impPath = Path.Combine(folder, "map.imp");
             string reloPath = Path.Combine(folder, "map.relo");
             string manifestPath = Path.Combine(folder, "map.manifest");
@@ -74,23 +85,23 @@ namespace MusafirEx.CncSage.Editor
             summary.ManifestPresent = File.Exists(manifestPath);
             if (summary.ImpPresent)
                 summary.ImportAddresses = CountIndexedOffsets(impPath, binLength,
-                    summary.Warnings, "map.imp");
+                    currentSignature, summary.Warnings, "map.imp");
             if (summary.ReloPresent)
                 summary.RelocationAddresses = CountIndexedOffsets(reloPath, binLength,
-                    summary.Warnings, "map.relo");
+                    currentSignature, summary.Warnings, "map.relo");
             if (summary.ManifestPresent)
             {
                 ParseManifest(manifestPath, binLength,
                     summary.ImpPresent ? new FileInfo(impPath).Length : -1,
                     summary.ReloPresent ? new FileInfo(reloPath).Length : -1,
-                    summary);
+                    currentSignature, summary);
                 ReadTerrainAtlas(Path.Combine(folder, "map.bin"), summary);
             }
             return summary;
         }
 
         private static void ParseManifest(string path, long binBytes,
-            long impBytes, long reloBytes, Summary result)
+            long impBytes, long reloBytes, uint expectedSignature, Summary result)
         {
             var file = new FileInfo(path);
             if (file.Length < 48 || file.Length > 64L * 1024 * 1024)
@@ -99,7 +110,7 @@ namespace MusafirEx.CncSage.Editor
                 return;
             }
             byte[] data = File.ReadAllBytes(path);
-            if (Read32(data, 4) != Cnc3CompiledMapReader.Signature)
+            if (Read32(data, 4) != expectedSignature)
             {
                 result.Warnings.Add("map.manifest signature does not match map.bin.");
                 return;
@@ -273,7 +284,7 @@ namespace MusafirEx.CncSage.Editor
         }
 
         internal static int CountIndexedOffsets(string path, long binSize,
-            List<string> warnings, string name)
+            uint expectedSignature, List<string> warnings, string name)
         {
             var info = new FileInfo(path);
             if (info.Length < 8 || info.Length > 64L * 1024 * 1024 ||
@@ -283,7 +294,7 @@ namespace MusafirEx.CncSage.Editor
                 return 0;
             }
             byte[] data = File.ReadAllBytes(path);
-            if (Read32(data, 0) != Cnc3CompiledMapReader.Signature)
+            if (Read32(data, 0) != expectedSignature)
             {
                 warnings.Add(name + " signature does not match map.bin.");
                 return 0;
