@@ -169,13 +169,60 @@ namespace MusafirEx.CncSage.Editor
         {
             if (string.IsNullOrEmpty(destination))
                 throw new ArgumentException("Output file must be specified.");
-            byte[] data = ReadMember(archive, entry);
+            if (archive == null || entry == null || archive.entries == null ||
+                !archive.entries.Contains(entry) || !archive.IsCurrent)
+                throw new InvalidDataException("BIG index is stale or member is invalid.");
             string folder = Path.GetDirectoryName(destination);
             if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
                 throw new DirectoryNotFoundException("Output folder unavailable.");
-            using (var dest = new FileStream(destination, FileMode.CreateNew,
-                FileAccess.Write, FileShare.None))
-                dest.Write(data, 0, data.Length);
+            if (entry.offset < archive.directoryBytes || entry.storedLength < 0 ||
+                entry.offset > archive.archiveLength ||
+                entry.storedLength > archive.archiveLength - entry.offset)
+                throw new InvalidDataException("BIG member range is invalid.");
+
+            // Stream ordinary big members in bounded chunks. RefPack members
+            // need decompression and still observe the independent memory cap.
+            using (var file = File.Open(archive.archivePath, FileMode.Open,
+                FileAccess.Read, FileShare.ReadWrite))
+            {
+                file.Position = entry.offset;
+                byte[] probe = new byte[(int)Math.Min(16L, entry.storedLength)];
+                ReadFully(file, probe, probe.Length);
+                bool compressed = Cnc3RefPack.IsRefPack(probe);
+                if (compressed && entry.storedLength > MaxReadBytes)
+                    throw new InvalidDataException(
+                        "Compressed BIG member exceeds 96 MiB decode limit.");
+                byte[] unpacked = compressed ? ReadMember(archive, entry) : null;
+                file.Position = entry.offset;
+                try
+                {
+                    using (var dest = new FileStream(destination, FileMode.CreateNew,
+                        FileAccess.Write, FileShare.None))
+                    {
+                        if (unpacked != null)
+                            dest.Write(unpacked, 0, unpacked.Length);
+                        else
+                        {
+                            var buffer = new byte[64 * 1024];
+                            long remaining = entry.storedLength;
+                            while (remaining > 0)
+                            {
+                                int part = (int)Math.Min(buffer.Length, remaining);
+                                int count = file.Read(buffer, 0, part);
+                                if (count <= 0) throw new EndOfStreamException();
+                                dest.Write(buffer, 0, count);
+                                remaining -= count;
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // Do not leave a half-extracted resource behind.
+                    if (File.Exists(destination)) File.Delete(destination);
+                    throw;
+                }
+            }
         }
 
         private static void ReadFully(Stream stream, byte[] data, int count)
