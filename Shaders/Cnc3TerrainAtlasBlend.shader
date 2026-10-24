@@ -3,6 +3,15 @@ Shader "MusafirEx/SAGE Terrain Atlas Blend"
     Properties
     {
         _MainTex ("SAGE Terrain Base Atlas", 2D) = "white" {}
+        _SageAmbient ("SAGE Ambient", Color) = (0.2,0.2,0.2,1)
+        _SageSunColor ("SAGE Sun Color", Color) = (0.9,0.9,0.85,1)
+        _SageAccent1Color ("SAGE Accent 1", Color) = (0,0,0,1)
+        _SageAccent2Color ("SAGE Accent 2", Color) = (0,0,0,1)
+        _SageSunDirection ("SAGE Sun Direction", Vector) = (0,-1,0,0)
+        _SageAccent1Direction ("SAGE Accent 1 Direction", Vector) = (0,-1,0,0)
+        _SageAccent2Direction ("SAGE Accent 2 Direction", Vector) = (0,-1,0,0)
+        _SageLightingStrength ("SAGE Lighting Strength", Range(0,1)) = 0
+        _SageUseCliffs ("Cliff Preview", Range(0,1)) = 0
     }
     SubShader
     {
@@ -19,6 +28,10 @@ Shader "MusafirEx/SAGE Terrain Atlas Blend"
             #include "UnityCG.cginc"
 
             sampler2D _MainTex;
+            fixed4 _SageAmbient, _SageSunColor;
+            fixed4 _SageAccent1Color, _SageAccent2Color;
+            float4 _SageSunDirection, _SageAccent1Direction, _SageAccent2Direction;
+            float _SageLightingStrength, _SageUseCliffs;
 
             struct appdata
             {
@@ -28,6 +41,10 @@ Shader "MusafirEx/SAGE Terrain Atlas Blend"
                 float2 uvThird : TEXCOORD2;
                 float4 blendInfo : TEXCOORD3;
                 float2 cellFrac : TEXCOORD4;
+                float3 normal : NORMAL;
+                float2 cliffRawUV : TEXCOORD5;
+                float4 cliffRect : TEXCOORD6;
+                float2 cliffCellAndEnabled : TEXCOORD7;
             };
 
             struct v2f
@@ -38,6 +55,10 @@ Shader "MusafirEx/SAGE Terrain Atlas Blend"
                 float2 uvThird : TEXCOORD2;
                 float4 blendInfo : TEXCOORD3;
                 float2 cellFrac : TEXCOORD4;
+                float3 worldNormal : NORMAL;
+                float2 cliffRawUV : TEXCOORD5;
+                float4 cliffRect : TEXCOORD6;
+                float2 cliffCellAndEnabled : TEXCOORD7;
             };
 
             v2f vert(appdata v)
@@ -49,6 +70,10 @@ Shader "MusafirEx/SAGE Terrain Atlas Blend"
                 o.uvThird = v.uvThird;
                 o.blendInfo = v.blendInfo;
                 o.cellFrac = v.cellFrac;
+                o.worldNormal = UnityObjectToWorldNormal(v.normal);
+                o.cliffRawUV = v.cliffRawUV;
+                o.cliffRect = v.cliffRect;
+                o.cliffCellAndEnabled = v.cliffCellAndEnabled;
                 return o;
             }
 
@@ -100,6 +125,28 @@ Shader "MusafirEx/SAGE Terrain Atlas Blend"
                     float3 tertiary = tex2D(_MainTex, i.uvThird).rgb;
                     result = lerp(result, tertiary, secondFactor);
                 }
+
+                // Optional experimental cliff override: uses per-corner
+                // World Builder mapping coordinates and the matching atlas
+                // texture rectangle. Deferred until an actual nonzero-cliff
+                // map is supplied for pixel-accurate validation.
+                if (_SageUseCliffs > 0.5 && i.cliffCellAndEnabled.y > 0.5)
+                {
+                    float2 cliffLocal = frac(i.cliffRawUV * (64.0 /
+                        max(1.0, i.cliffCellAndEnabled.x)));
+                    float2 cliffUv = lerp(i.cliffRect.xy,
+                        i.cliffRect.zw, cliffLocal);
+                    result = tex2D(_MainTex, cliffUv).rgb;
+                }
+
+                float3 normal = normalize(i.worldNormal);
+                float ndotl = max(0.0, dot(normal, -normalize(_SageSunDirection.xyz)));
+                float n1 = max(0.0, dot(normal, -normalize(_SageAccent1Direction.xyz)));
+                float n2 = max(0.0, dot(normal, -normalize(_SageAccent2Direction.xyz)));
+                float3 lighting = _SageAmbient.rgb + _SageSunColor.rgb * ndotl +
+                    _SageAccent1Color.rgb * n1 + _SageAccent2Color.rgb * n2;
+                result *= lerp(float3(1,1,1), saturate(lighting),
+                    saturate(_SageLightingStrength));
                 return float4(result, 1.0);
             }
             ENDCG
