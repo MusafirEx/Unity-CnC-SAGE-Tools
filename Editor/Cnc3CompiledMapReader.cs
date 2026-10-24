@@ -13,7 +13,11 @@ namespace MusafirEx.CncSage.Editor
     /// </summary>
     internal static class Cnc3CompiledMapReader
     {
-        internal const uint Signature = 0x9CCE1238;
+        // The first uint32 is a per-stream checksum/identifier, NOT a
+        // constant format signature. It varies between compiled map bundles.
+        // The matching manifest stores the same value at byte offset 4.
+        // The older importer incorrectly assumed the identifier of one
+        // example map (0x9CCE1238) applied to every SAGE map.
         private const int MaxBytes = 256 * 1024 * 1024;
         private const int MaxDimension = 4096;
 
@@ -49,9 +53,36 @@ namespace MusafirEx.CncSage.Editor
                 BinarySize = bytes.Length,
                 SignatureRead = U32(bytes, 0)
             };
-            if (result.SignatureRead != Signature)
-                throw new InvalidDataException("map.bin has unexpected SAGE signature 0x" +
-                    result.SignatureRead.ToString("X8") + " (expected 0x9CCE1238).");
+            if (result.SignatureRead == 0 || result.SignatureRead == uint.MaxValue)
+                throw new InvalidDataException("map.bin contains an invalid stream identifier.");
+
+            // Verify the stream against its own manifest, not the first map
+            // sample's checksum. Compiled assets without a manifest may still
+            // contain extractable DDS resources, but not validated atlas IDs.
+            string companionManifest = Path.Combine(
+                Path.GetDirectoryName(path) ?? "", "map.manifest");
+            if (File.Exists(companionManifest))
+            {
+                using (var manifestStream = File.OpenRead(companionManifest))
+                using (var manifestReader = new BinaryReader(manifestStream))
+                {
+                    if (manifestStream.Length < 48)
+                        throw new InvalidDataException("map.manifest header is truncated.");
+                    manifestStream.Position = 4;
+                    uint manifestSignature = manifestReader.ReadUInt32();
+                    if (manifestSignature != result.SignatureRead)
+                        throw new InvalidDataException("The selected map.bin (0x" +
+                            result.SignatureRead.ToString("X8") +
+                            ") does not match map.manifest (0x" +
+                            manifestSignature.ToString("X8") +
+                            "). Ensure all files belong to the same map.");
+                }
+            }
+            else
+            {
+                result.Warnings.Add("map.manifest is missing; compiled DDS can be " +
+                    "extracted, but atlas/texture IDs cannot be verified.");
+            }
 
             for (int offset = 4; offset + 128 <= bytes.Length; offset += 4)
             {
