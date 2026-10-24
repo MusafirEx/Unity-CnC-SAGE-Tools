@@ -33,6 +33,10 @@ namespace MusafirEx.CncSage.Editor
         public int roadSurfaceFourWayCrossings;
         public int roadSurfaceResolvedTypes;
         public int roadSurfaceTexturedTypes;
+        public int roadSurfaceAutoMatchedTypes;
+        public int roadSurfaceIndexedTextures;
+        public string roadSurfaceSearchedFolders;
+        public List<string> roadSurfaceMissingTextures = new List<string>();
         public int roadSurfaceUnresolvedTypes;
         public int roadSurfaceDuplicateSegments;
         public string roadSurfaceStatus;
@@ -108,6 +112,8 @@ namespace MusafirEx.CncSage.Editor
         public int crossingCount;
         public bool foundRoadDefinition;
         public bool hasTexture;
+        public string textureAssetPath;
+        public string textureMatchSource;
         public Mesh mesh;
         public Material material;
     }

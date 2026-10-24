@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.9.9",
+  "version": "0.9.10",
   "displayName": "C&C SAGE Model Tools",
-  "description": "C&C3/Kane's Wrath Unity map importer with Phase 5A networked road surfaces, optional road templates/atlas textures, terrain blending and lighting.",
+  "description": "Unity C&C3/Kane's Wrath map importer with automatic Phase 5A original road DDS matching from extracted WBData and road network surfaces.",
   "unity": "2022.3",
   "keywords": [
     "command and conquer",

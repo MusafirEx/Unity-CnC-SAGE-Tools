@@ -2,7 +2,7 @@
 
 Unity 2022.3 LTS+ Editor tools for **Generals / Zero Hour** binary **W3D importing**, alongside **Tiberium Wars / Kane's Wrath** source **W3X** model/animation import and export.
 
-**Version 0.9.9 — C&C3/KW Phase 5A connected road surfaces and optional original road atlas templates, plus terrain/blending/water.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
+**Version 0.9.10 — automatic extracted-WBData road texture matching for Phase 5A, plus C&C3/KW terrain/blending, connected road networks and lighting.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
 
 > W3D support is **import only**; this package is not a W3D exporter, game asset extractor or confirmed game-ready mod builder. Keep backups and validate with the game toolchain separately.
 
@@ -158,6 +158,19 @@ The `MusafirEx/SAGE Road Atlas` shader samples repeating straight road strips fr
 The new **Import Road Surfaces** option is OFF by default. In sample `eamap_sb05_4.map`, the verified network has **1,110 segments across 13 types**, **680 two-way junctions**, **52 three-way crossings** and zero four-way crossings. The resulting Unity meshes and shader still require live Editor validation.
 
 See [Phase 5A technical guide](docs/Cnc3Phase5RoadSurfaces.md).
+
+## Phase 5A v0.9.10 — Automatic matching of road DDS textures
+
+**Original road textures can now be discovered automatically in extracted WBData.** The Unity `Cnc3MapImporter` searches its supplied Road Texture Folder first, then the `WBData` sibling of the map folder (for example `Assets/CnC3KW/WBData`), then the road definitions and map folders. It prefers manually assigned `Texture2D`, followed by the **exact** source `RoadTemplate.Texture` basename, followed by an exact `MapObject.TypeName` basename as an *unverified candidate*. It never substitutes `ASRoad01` for `UKRoad01` merely because their names are similar.
+
+Two workflows:
+
+- In the `.map` Inspector enable **Import Road Surfaces** and **Auto Resolve Road Textures** (on by default). Reimport; the map's Imported Map Info now shows **Texture Folders**, **Indexed Road Texture Candidates**, **Road Types Textured**, and the resolved/missing reason for each road type.
+- To save the matches into a generated `*_RoadLibrary.asset`, select that asset and choose **Assets → C&C SAGE → Auto-Match Road Library Textures**. It fills empty Texture2D references for exact-name matches and preserves every existing manual assignment.
+
+The reference map has 13 **UK, Washington and Aus** road names; the texture index is not expected to match those names to the earlier alphabetical `ASRoad` assets. If road filenames are different from type names, populate original `RoadTemplate.Texture` names (or select the correct DDS manually). Extracted road atlas orientation is still experimental until visually checked against the original game.
+
+See [road texture matching technical notes](docs/Cnc3Phase5RoadTextureAutobind.md).
 
 ## Generals / Zero Hour — binary W3D import (new in 0.8.0)
 
