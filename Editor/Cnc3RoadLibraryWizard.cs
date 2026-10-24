@@ -263,26 +263,49 @@ namespace MusafirEx.CncSage.Editor
                 Debug.LogWarning("[C&C SAGE ROADS] The source .map has no imported Cnc3MapManifest.");
                 return;
             }
+            // Only valid consecutive Start/End pairs are roads.
+            // Filtering by an isolated road flag previously included
+            // map object types without drawable road geometry.
             var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (Cnc3MapPlacement placement in mapInfo.placements)
-                if ((placement.roadFlags & (2u | 4u)) != 0 &&
-                    !string.IsNullOrWhiteSpace(placement.typeName))
-                    names.Add(placement.typeName);
+            for (int i = 0; i + 1 < mapInfo.placements.Count; i++)
+            {
+                Cnc3MapPlacement start = mapInfo.placements[i];
+                Cnc3MapPlacement end = mapInfo.placements[i + 1];
+                if ((start.roadFlags & 2u) == 0 ||
+                    (end.roadFlags & 4u) == 0 ||
+                    string.IsNullOrWhiteSpace(start.typeName) ||
+                    !string.Equals(start.typeName, end.typeName,
+                        StringComparison.Ordinal))
+                    continue;
+                names.Add(start.typeName);
+                i++;
+            }
             if (names.Count == 0)
             {
                 Debug.LogWarning("[C&C SAGE ROADS] No road control-point types in this map.");
                 return;
             }
             var library = ScriptableObject.CreateInstance<Cnc3RoadLibrary>();
+            library.sourceDefinitions = AssetDatabase.LoadAssetAtPath<TextAsset>(
+                OfficialRoadXmlAssetPath);
+            var warnings = new List<string>();
+            var sourceTemplates = library.ReadTemplates(warnings);
             foreach (string name in names)
+            {
+                Cnc3RoadLibrary.Template known;
+                bool found = sourceTemplates.TryGetValue(name, out known);
                 library.overrides.Add(new Cnc3RoadLibrary.Template
                 {
                     roadType = name,
-                    roadWidth = Cnc3MapRoadBuilder.GuessSourceWidth(name),
-                    roadWidthInTexture = 1f,
-                    sourceTextureName = "",
+                    roadWidth = found ? known.roadWidth :
+                        Cnc3MapRoadBuilder.GuessSourceWidth(name),
+                    roadWidthInTexture = found ? known.roadWidthInTexture : 1f,
+                    sourceTextureName = found ? known.sourceTextureName : "",
+                    normalTextureName = found ? known.normalTextureName : "",
+                    priority = found ? known.priority : 0f,
                     texture = null
                 });
+            }
 
             string parent = Path.GetDirectoryName(mapPath).Replace('\\', '/');
             string outputPath = AssetDatabase.GenerateUniqueAssetPath(
@@ -293,9 +316,11 @@ namespace MusafirEx.CncSage.Editor
             EditorGUIUtility.PingObject(library);
             Selection.activeObject = library;
             Debug.Log("[C&C SAGE ROADS] Created " + outputPath + " with " +
-                names.Count + " source road types. Widths are previews; " +
-                "set original RoadWidth/RoadWidthInTexture and link extracted " +
-                "road atlas textures before expecting in-game fidelity.");
+                names.Count + " valid road surface types. " +
+                (library.sourceDefinitions != null
+                    ? "Original EA RoadWidth/Texture fields loaded when available."
+                    : "Install official EA Roads.xml for original widths/atlas names.") +
+                " Missing styles and DDS assets require independent validation.");
         }
     }
 }
