@@ -160,6 +160,27 @@ namespace MusafirEx.CncSage.Editor
                     report.manifestGameObjectNames = linked.ManifestGameObjects;
                     report.manifestTextureNames = linked.ManifestTextures;
                     report.compiledManifestMatchesBin = linked.ManifestLinksBinary;
+                    report.manifestAssetCount = linked.ManifestAssetCount;
+                    report.manifestAssetsWithData = linked.ManifestAssetsWithData;
+                    foreach (var asset in linked.Assets)
+                    {
+                        report.compiledAssets.Add(new Cnc3CompiledAssetEntry
+                        {
+                            assetName = asset.Name,
+                            sourceFile = asset.Source,
+                            typeId = asset.TypeId,
+                            instanceId = asset.InstanceId,
+                            binaryOffset = asset.BinaryOffset,
+                            binaryLength = asset.BinaryLength,
+                            importOffset = asset.ImportOffset,
+                            importLength = asset.ImportLength,
+                            relocationOffset = asset.RelocationOffset,
+                            relocationLength = asset.RelocationLength,
+                            referenceCount = asset.ReferenceCount
+                        });
+                    }
+                    foreach (var atlas in report.compiledTextures)
+                        atlas.ownerAsset = linked.FindOwner(atlas.offset);
                     foreach (string warning in linked.Warnings)
                         Debug.LogWarning("[C&C SAGE BIN] " + warning);
                 }
@@ -411,6 +432,12 @@ namespace MusafirEx.CncSage.Editor
                         report.compiledImportAddresses.ToString("N0"));
                     EditorGUILayout.LabelField("Relocation Addresses",
                         report.compiledRelocationAddresses.ToString("N0"));
+                    EditorGUILayout.LabelField("Manifest Records",
+                        report.manifestAssetCount.ToString("N0"));
+                    EditorGUILayout.LabelField("Records With Binary Data",
+                        report.manifestAssetsWithData.ToString("N0"));
+                    EditorGUILayout.LabelField("Manifest / B-I-R Match",
+                        report.compiledManifestMatchesBin ? "Validated" : "Not validated");
                     EditorGUILayout.LabelField("Manifest GameObject Names",
                         report.manifestGameObjectNames.ToString("N0"));
                     EditorGUILayout.LabelField("Manifest Texture Names",
@@ -425,12 +452,22 @@ namespace MusafirEx.CncSage.Editor
                                 atlas.offset.ToString("X8") + " (" + atlas.length +
                                 " bytes)");
                             EditorGUILayout.LabelField("Format", atlas.format);
+                            if (!string.IsNullOrEmpty(atlas.ownerAsset))
+                                EditorGUILayout.LabelField("Owner", atlas.ownerAsset);
                             EditorGUILayout.LabelField("Size", atlas.width + " × " +
                                 atlas.height + ", " + atlas.mipCount + " source mips");
                             using (new EditorGUI.DisabledScope(true))
                                 EditorGUILayout.ObjectField("Unity Texture", atlas.texture,
                                     typeof(Texture2D), false);
                         }
+                    }
+                    if (report.compiledAssets.Count > 0)
+                    {
+                        EditorGUILayout.LabelField("Compiled Assets Indexed",
+                            report.compiledAssets.Count.ToString("N0"));
+                        EditorGUILayout.HelpBox("Full per-asset names, IDs, source paths and " +
+                            "B/I/R ranges are stored in the imported Cnc3MapManifest " +
+                            "sub-asset. Compiled W3DMesh bodies may be external.", MessageType.None);
                     }
                     if (!string.IsNullOrEmpty(report.compiledImportNote))
                         EditorGUILayout.HelpBox(report.compiledImportNote, MessageType.None);
