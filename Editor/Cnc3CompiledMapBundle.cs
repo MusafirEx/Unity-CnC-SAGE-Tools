@@ -28,6 +28,12 @@ namespace MusafirEx.CncSage.Editor
             internal uint ReferenceCount;
         }
 
+        internal sealed class AtlasTile
+        {
+            internal uint TextureId;
+            internal int X0, Y0, X1, Y1;
+        }
+
         internal sealed class Summary
         {
             internal bool ImpPresent;
@@ -41,6 +47,9 @@ namespace MusafirEx.CncSage.Editor
             internal int ManifestVersion;
             internal int ManifestAssetCount;
             internal int ManifestAssetsWithData;
+            internal string TerrainAtlasName;
+            internal bool TerrainAtlasValidated;
+            internal readonly List<AtlasTile> AtlasTiles = new List<AtlasTile>();
             internal readonly List<AssetInfo> Assets = new List<AssetInfo>();
             internal readonly List<string> Warnings = new List<string>();
 
@@ -70,10 +79,13 @@ namespace MusafirEx.CncSage.Editor
                 summary.RelocationAddresses = CountIndexedOffsets(reloPath, binLength,
                     summary.Warnings, "map.relo");
             if (summary.ManifestPresent)
+            {
                 ParseManifest(manifestPath, binLength,
                     summary.ImpPresent ? new FileInfo(impPath).Length : -1,
                     summary.ReloPresent ? new FileInfo(reloPath).Length : -1,
                     summary);
+                ReadTerrainAtlas(Path.Combine(folder, "map.bin"), summary);
+            }
             return summary;
         }
 
@@ -185,6 +197,70 @@ namespace MusafirEx.CncSage.Editor
                 (reloBytes < 0 || reloOffset == reloBytes);
             if (!result.ManifestLinksBinary)
                 result.Warnings.Add("Manifest compiled section lengths don't match B/I/R data sizes.");
+        }
+
+
+        private static void ReadTerrainAtlas(string binPath, Summary summary)
+        {
+            if (!summary.ManifestLinksBinary) return;
+            AssetInfo source = null;
+            foreach (AssetInfo entry in summary.Assets)
+                if (entry.Name.StartsWith("TerrainTextureAtlas:", StringComparison.Ordinal)
+                    && entry.BinaryLength > 28)
+                {
+                    source = entry;
+                    break;
+                }
+            if (source == null) return;
+            summary.TerrainAtlasName = source.Name;
+            using (var stream = File.OpenRead(binPath))
+            using (var reader = new BinaryReader(stream))
+            {
+                stream.Position = source.BinaryOffset;
+                byte[] header = reader.ReadBytes(28);
+                if (header.Length != 28) return;
+                uint count = Read32(header, 4);
+                uint tilesRelative = Read32(header, 8);
+                uint colorRelative = Read32(header, 12);
+                uint colorLength = Read32(header, 16);
+                uint normalsRelative = Read32(header, 20);
+                uint normalsLength = Read32(header, 24);
+                if (count < 1 || count > 4096 ||
+                    tilesRelative < 28 || tilesRelative + 12L * count > colorRelative ||
+                    colorRelative + (long)colorLength != normalsRelative ||
+                    normalsRelative + (long)normalsLength > source.BinaryLength)
+                {
+                    summary.Warnings.Add("TerrainTextureAtlas subasset pointer layout is invalid.");
+                    return;
+                }
+                if (source.BinaryOffset + (long)normalsRelative +
+                    normalsLength > stream.Length)
+                {
+                    summary.Warnings.Add("TerrainTextureAtlas images exceed map.bin.");
+                    return;
+                }
+                stream.Position = source.BinaryOffset + tilesRelative;
+                for (int i = 0; i < count; i++)
+                {
+                    uint id = reader.ReadUInt32();
+                    int x0 = reader.ReadUInt16();
+                    int y0 = reader.ReadUInt16();
+                    int x1 = reader.ReadUInt16();
+                    int y1 = reader.ReadUInt16();
+                    if (x0 >= x1 || y0 >= y1 || x1 > 4096 || y1 > 4096)
+                    {
+                        summary.Warnings.Add("TerrainTextureAtlas tile rect outside DDS bounds.");
+                        summary.AtlasTiles.Clear();
+                        return;
+                    }
+                    summary.AtlasTiles.Add(new AtlasTile
+                    {
+                        TextureId = id,
+                        X0 = x0, Y0 = y0, X1 = x1, Y1 = y1
+                    });
+                }
+                summary.TerrainAtlasValidated = true;
+            }
         }
 
         private static string ReadName(byte[] data, int at, int stop)
