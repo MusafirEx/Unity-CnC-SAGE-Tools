@@ -108,7 +108,7 @@ namespace MusafirEx.CncSage.Editor
                     result.DuplicateSegments++;
                     continue;
                 }
-                Cnc3RoadLibrary.Template definition;
+                Cnc3RoadLibrary.Template definition = null;
                 bool matched = definitions != null &&
                     definitions.TryGetValue(name, out definition);
                 if (!matched) definition = null;
