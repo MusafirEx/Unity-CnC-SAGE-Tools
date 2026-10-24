@@ -38,6 +38,10 @@ namespace MusafirEx.CncSage.Editor
         [Tooltip("Group imported markers by their C&C3 object type names.")]
         public bool groupObjectsByType = true;
 
+        [Tooltip("Safety limit for generated GameObjects. All placements remain in the MapInfo subasset.")]
+        [Min(0)]
+        public int maxObjectPlaceholders = 20000;
+
         [Tooltip("Add MeshColliders to the generated terrain tiles.")]
         public bool addMeshColliders;
 
@@ -81,7 +85,7 @@ namespace MusafirEx.CncSage.Editor
             if (importTerrain)
                 BuildTerrain(context, root, map, report);
             if (importObjects)
-                BuildObjectPlaceholders(root, map);
+                report.objectMarkerCount = BuildObjectPlaceholders(root, map);
 
             foreach (string warning in map.Warnings)
                 Debug.LogWarning("[C&C SAGE MAP] " + context.assetPath + ": " + warning);
@@ -199,9 +203,9 @@ namespace MusafirEx.CncSage.Editor
             report.terrainLength = (endY - startY) * hScale;
         }
 
-        private void BuildObjectPlaceholders(GameObject root, Cnc3MapReader.Data map)
+        private int BuildObjectPlaceholders(GameObject root, Cnc3MapReader.Data map)
         {
-            if (map.Objects.Count == 0) return;
+            if (map.Objects.Count == 0 || maxObjectPlaceholders <= 0) return 0;
             Transform holder = new GameObject("SAGE_ObjectPlacements").transform;
             holder.SetParent(root.transform, false);
             var groups = new Dictionary<string, Transform>(StringComparer.Ordinal);
@@ -213,7 +217,12 @@ namespace MusafirEx.CncSage.Editor
                 vScale = 0.625f;
             float heightRatio = vScale / baseElevationScale;
 
-            for (int i = 0; i < map.Objects.Count; i++)
+            int count = Math.Min(map.Objects.Count, maxObjectPlaceholders);
+            if (count < map.Objects.Count)
+                Debug.LogWarning("[C&C SAGE MAP] Object placeholders were limited to " +
+                    count + " GameObjects for Editor performance; all decoded placements " +
+                    "are preserved in Cnc3MapManifest.");
+            for (int i = 0; i < count; i++)
             {
                 Cnc3MapReader.ObjectData source = map.Objects[i];
                 string typeName = string.IsNullOrWhiteSpace(source.TypeName)
@@ -243,6 +252,7 @@ namespace MusafirEx.CncSage.Editor
                 marker.transform.localRotation = Quaternion.Euler(
                     0f, -source.Angle * Mathf.Rad2Deg, 0f);
             }
+            return count;
         }
 
         private static string SafeHierarchyName(string text)
@@ -271,6 +281,7 @@ namespace MusafirEx.CncSage.Editor
             EditorGUILayout.PropertyField(serializedObject.FindProperty("includeBorder"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("importObjects"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("groupObjectsByType"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("maxObjectPlaceholders"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("addMeshColliders"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("terrainMaterial"));
 
@@ -289,6 +300,7 @@ namespace MusafirEx.CncSage.Editor
                     EditorGUILayout.LabelField("Compression", report.wasCompressed ? "EAR / RefPack" : "CkMp");
                     EditorGUILayout.LabelField("Terrain Tiles", report.tileCount.ToString());
                     EditorGUILayout.LabelField("Object Placements", report.objectCount.ToString());
+                    EditorGUILayout.LabelField("Generated Placeholders", report.objectMarkerCount.ToString());
                     EditorGUILayout.LabelField("Distinct Object Types", report.distinctObjectTypes.ToString());
                     EditorGUILayout.LabelField("Map Sections", report.sections == null
                         ? "Unknown" : report.sections.Length.ToString());
