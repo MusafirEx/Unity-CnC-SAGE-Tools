@@ -12,7 +12,7 @@ namespace MusafirEx.CncSage.Editor
     /// First-pass C&C 3 / Kane's Wrath World Builder .map importer.
     /// Source map remains untouched. Mode 1: terrain and source object placeholders.
     /// </summary>
-    [ScriptedImporter(9, "map")]
+    [ScriptedImporter(10, "map")]
     public sealed class Cnc3MapImporter : ScriptedImporter
     {
         [Tooltip("Reconstruct HeightMapData as tiled, editable Unity mesh sub-assets.")]
