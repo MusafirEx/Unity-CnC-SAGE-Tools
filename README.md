@@ -196,6 +196,18 @@ For Phase 5A roads, assign the saved index to **Road BIG Archive** in the `.map`
 
 [Direct BIG guide, limitations and Unity steps](docs/Cnc3DirectBigArchive.md).
 
+## v0.9.13 — BIG-2 compiled manifest/BIN virtual asset browser
+
+**If your WBData.big exposes only `.manifest` and `.bin`, that is expected:** C&C3/Kane's Wrath compile many texture and model resources into those streams. The BIG archive browser is not failing—it is showing the physical members.
+
+BIG-2 adds **Tools → C&C SAGE → BIG Compiled Asset Browser**. Assign the existing lightweight `WBData_Index.asset`; choose the matching manifest/BIN pair; create a virtual `WBData_CompiledIndex.asset` holding SAGE v5 asset names, types, references and exact BIN byte offsets, without extracting or importing thousands of files. Search `Texture:`, `GameObject:`, or `Road` and inspect a bounded 128-byte raw sample of any selected record.
+
+For Phase 5A roads, the `.map` importer gains **Road Compiled Asset Index**. It can resolve an exact Texture record (original RoadTemplate.Texture first, then exact road TypeName as a candidate) and only attach a road texture if the individual asset contains a verified DXT1/DXT5 DDS stream. Most engine-native compiled texture payloads may **not** have a DDS header, so the initial result can remain zero textured roads until the specific SAGE texture resource format is decoded. Do not confuse virtual asset indexing with a complete GameObject/W3D reconstruction.
+
+New self-test: **Tools → C&C SAGE → Run BIG-2 Compiled Index Self-Test**. No pre-existing extracted files should be deleted yet, and live Editor/real WBData compilation must be tested before merging.
+
+[Technical walkthrough and limits](docs/Cnc3BIG2CompiledVirtualAssets.md).
+
 ## Generals / Zero Hour — binary W3D import (new in 0.8.0)
 
 **One Unity plugin, two formats.** Add .w3d files under Assets/ and Unity imports them automatically using a separate import-only reader. The existing W3X tool menus remain available.
