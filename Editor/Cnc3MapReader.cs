@@ -243,7 +243,10 @@ namespace MusafirEx.CncSage.Editor
                         matchLength > output.Length - cursor)
                         throw new InvalidDataException("Invalid RefPack back-reference.");
                     for (int i = 0; i < matchLength; i++)
-                        output[cursor++] = output[cursor - matchOffset - 1];
+                    {
+                        output[cursor] = output[cursor - matchOffset];
+                        cursor++;
+                    }
                 }
             }
             if (!finished || cursor != output.Length)
