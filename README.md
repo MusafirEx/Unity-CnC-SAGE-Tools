@@ -2,7 +2,7 @@
 
 Unity 2022.3 LTS+ Editor tools for **Generals / Zero Hour** binary **W3D importing**, alongside **Tiberium Wars / Kane's Wrath** source **W3X** model/animation import and export.
 
-**Version 0.9.6 — C&C3/Kane's Wrath `.map` textured terrain, blending and standing-water previews, alongside W3D/W3X.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
+**Version 0.9.7 — Per-map compiled asset ID validation fix for C&C3/KW `.map` terrain, blending and standing-water previews.** The normal Unity package no longer imports nine development smoke/self-test scripts or exposes any `Run ... Self-Test` menu items. Existing importers, animation creation, model export, animation export, and read-only inspection/audit tools remain available.
 
 > W3D support is **import only**; this package is not a W3D exporter, game asset extractor or confirmed game-ready mod builder. Keep backups and validate with the game toolchain separately.
 
@@ -119,6 +119,21 @@ The real `eamap_sb05_4.map` has **no active cliff-texture grid cells** but does 
 **Test:** Install `https://github.com/MusafirEx/Unity-CnC-SAGE-Tools.git#feature/cnc3-map-standing-water`, select `eamap_sb05_4.map` and Reimport with **Import Standing Water** enabled. Confirm `SAGE_WaterAreas` contains two child meshes and the Inspector shows **Water Meshes Created: 2**. Console compilation and runtime visual checks must be confirmed in Unity before merging.
 
 See [Standing water technical notes](docs/Cnc3StandingWater.md).
+
+## v0.9.7 — Fix missing terrain textures on other maps
+
+The previous compiled asset reader rejected **every map.bin except those sharing the first sample's 0x9CCE1238 stream identifier**. This was a false assumption: the first four bytes of the compiled stream are an identifier/checksum for that particular map, **not a constant magic header**.
+
+Evidence from the user's Unity Editor.log:
+- `map_mp_2_simon_b/map.bin`: identifier `0x5AD3D148`, map terrain 345×345 imports but its atlas was skipped.
+- `map_mp_2_black2_redzoned/map.bin`: identifier `0x23E90B79`, terrain 500×400 imports but its atlas was skipped.
+- `eamap_sb05_4/map.bin`: `0x9CCE1238`, the original verified example.
+
+The compiled reader now compares each `map.bin` ID with **the same map's** `map.manifest` header at offset +4. The .imp and .relo signatures are also validated against the **current** map.bin ID, rather than a hardcoded literal. The map asset Inspector shows **Compiled Stream ID** for troubleshooting. An incompatible manifest produces a precise mismatch error without blocking the heightmap or source object import.
+
+The Unity Package Manager also previously emitted `Asset ... Shaders has no meta file, but it's in an immutable folder`; this update includes `Shaders.meta` and four previously missing documentation .meta files so the shader directory can import normally.
+
+**Test:** Install the feature branch, reimport `map_mp_2_simon_b.map` and `map_mp_2_black2_redzoned.map`. Check the Inspector's Compiled Stream ID, DDS Atlas count, Source Terrain Textures, Texture IDs Matched and Atlas Applied to Terrain. Successful texture display still depends on each map's actual DDS and compatible TerrainTextureAtlas/BlendTileData records; this fix removes the known checksum gate, not all possible map-format variations.
 
 ## Generals / Zero Hour — binary W3D import (new in 0.8.0)
 
