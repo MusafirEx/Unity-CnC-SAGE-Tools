@@ -36,6 +36,10 @@ namespace MusafirEx.CncSage.Editor
         public int roadSurfaceAutoMatchedTypes;
         public int roadSurfaceIndexedTextures;
         public int roadFromBigTextureCount;
+        public int roadFromCompiledBinTextureCount;
+        public int compiledBigVirtualAssetCount;
+        public int compiledBigVirtualTextureCount;
+        public string roadCompiledBigStatus;
         public int roadBigArchiveEntryCount;
         public string roadBigArchiveStatus;
         public string roadSurfaceSearchedFolders;
