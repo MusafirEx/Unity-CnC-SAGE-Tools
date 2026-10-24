@@ -206,6 +206,11 @@ namespace MusafirEx.CncSage.Editor
                     material.SetColor("_BaseColor", waterTint);
                 if (material.HasProperty("_Scroll"))
                     material.SetFloat("_Scroll", water.UvScrollSpeed * speedMultiplier);
+                if (material.HasProperty("_SrcBlend"))
+                    material.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+                if (material.HasProperty("_DstBlend"))
+                    material.SetInt("_DstBlend", water.Additive ?
+                        (int)BlendMode.One : (int)BlendMode.OneMinusSrcAlpha);
                 material.renderQueue = (int)RenderQueue.Transparent;
                 context.AddObjectToAsset("CNC3_WaterMesh_" + i, mesh);
                 context.AddObjectToAsset("CNC3_WaterMaterial_" + i, material);
