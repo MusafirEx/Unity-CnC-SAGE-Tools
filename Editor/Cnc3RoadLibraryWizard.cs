@@ -13,6 +13,59 @@ namespace MusafirEx.CncSage.Editor
     /// </summary>
     internal static class Cnc3RoadLibraryWizard
     {
+        [MenuItem("Assets/C&C SAGE/Auto-Match Road Library Textures")]
+        private static void AutoMatchSelectedLibrary()
+        {
+            var library = Selection.activeObject as Cnc3RoadLibrary;
+            if (library == null) return;
+            string assetPath = AssetDatabase.GetAssetPath(library);
+            var catalog = Cnc3RoadTextureCatalog.Create(assetPath, library, null);
+            int assigned = 0, preserved = 0;
+            var unmatched = new List<string>();
+            foreach (var entry in library.overrides)
+            {
+                if (entry == null || string.IsNullOrWhiteSpace(entry.roadType))
+                    continue;
+                if (entry.texture != null)
+                {
+                    preserved++;
+                    continue;
+                }
+                Texture2D matched;
+                string matchMethod;
+                if (catalog.TryResolve(entry.roadType, entry.sourceTextureName,
+                    true, out matched, out matchMethod))
+                {
+                    if (assigned == 0)
+                        Undo.RecordObject(library, "Match Road Library DDS textures");
+                    entry.texture = matched;
+                    assigned++;
+                }
+                else
+                    unmatched.Add(entry.roadType);
+            }
+            if (assigned > 0)
+            {
+                EditorUtility.SetDirty(library);
+                AssetDatabase.SaveAssets();
+            }
+            string details = "Road textures: " + assigned + " auto-matched, " +
+                preserved + " existing assignments preserved, " +
+                unmatched.Count + " not found.\n" +
+                "Searched folders: " + catalog.SearchFolders +
+                (unmatched.Count > 0 ? "\nMissing: " +
+                    string.Join(", ", unmatched.ToArray()) : "");
+            Debug.Log("[C&C SAGE ROADS] " + details);
+            EditorUtility.DisplayDialog("C&C SAGE Road Texture Matching",
+                details, "OK");
+        }
+
+        [MenuItem("Assets/C&C SAGE/Auto-Match Road Library Textures", true)]
+        private static bool CanAutoMatchSelectedLibrary()
+        {
+            return Selection.activeObject is Cnc3RoadLibrary;
+        }
+
         [MenuItem("Assets/C&C SAGE/Create Road Library From Map")]
         private static void CreateSelected()
         {
