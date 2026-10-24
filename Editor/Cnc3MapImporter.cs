@@ -206,9 +206,14 @@ namespace MusafirEx.CncSage.Editor
                 report.roadGuideStatus = "No consecutive source RoadType Start/End pairs.";
                 return;
             }
-            Shader shader = Shader.Find("Unlit/Color") ??
-                Shader.Find("Universal Render Pipeline/Unlit") ??
-                Shader.Find("Standard");
+            bool srp = GraphicsSettings.currentRenderPipeline != null;
+            Shader shader = srp
+                ? (Shader.Find("Universal Render Pipeline/Unlit") ??
+                    Shader.Find("HDRP/Unlit") ??
+                    Shader.Find("Unlit/Color"))
+                : (Shader.Find("Unlit/Color") ?? Shader.Find("Standard"));
+            if (shader != null && !shader.isSupported)
+                shader = null;
             if (shader == null)
             {
                 report.roadGuideStatus = "No road preview material shader found.";
