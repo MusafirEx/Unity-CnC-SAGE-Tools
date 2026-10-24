@@ -7,11 +7,22 @@ namespace MusafirEx.CncSage.Editor
 {
     /// <summary>
     /// Bounded, read-only CkMp / EAR map data reader. Only HeightMapData is
-    /// decoded; other versioned sections are indexed and skipped.
-    /// This intentionally does not execute map scripts or instantiate map objects.
+    /// decoded together with ObjectsList; other versioned sections are skipped.
+    /// This intentionally does not execute any map scripts or properties.
     /// </summary>
     internal static class Cnc3MapReader
     {
+        internal sealed class ObjectData
+        {
+            internal string TypeName;
+            internal float X;
+            internal float Y;
+            internal float Z;
+            internal float Angle;
+            internal uint RoadFlags;
+            internal ushort Version;
+        }
+
         internal sealed class Data
         {
             internal int Width;
@@ -20,6 +31,7 @@ namespace MusafirEx.CncSage.Editor
             internal ushort HeightmapVersion;
             internal ushort[] Elevations;
             internal bool Compressed;
+            internal readonly List<ObjectData> Objects = new List<ObjectData>();
             internal readonly List<string> SectionNames = new List<string>();
             internal readonly List<string> Warnings = new List<string>();
         }
@@ -27,6 +39,7 @@ namespace MusafirEx.CncSage.Editor
         private const int MaxCompressedBytes = 96 * 1024 * 1024;
         private const int MaxDecodedBytes = 192 * 1024 * 1024;
         private const int MaxSamples = 4 * 1024 * 1024;
+        private const int MaxObjects = 100000;
 
         internal static Data Read(string path)
         {
@@ -88,15 +101,74 @@ namespace MusafirEx.CncSage.Editor
                             throw new InvalidDataException("Map contains duplicate HeightMapData sections.");
                         ReadHeights(reader, stop, version, result);
                     }
+                    else if (name == "ObjectsList")
+                    {
+                        ReadObjects(reader, stop, names, result);
+                    }
                     stream.Position = stop;
                 }
             }
             if (result.Elevations == null)
                 throw new InvalidDataException("C&C map has no HeightMapData section.");
             if (result.SectionNames.Count > 1)
-                result.Warnings.Add("Terrain preview only: objects, roads, blend tiles, " +
-                    "lighting, water and scripts are retained in the source map, but not yet visualized.");
+                result.Warnings.Add("Mode 1 imports terrain and object placement markers only. " +
+                    "Object meshes, roads, tile blending, lighting, water and scripts are not reconstructed.");
             return result;
+        }
+
+
+        private static void ReadObjects(BinaryReader reader, long sectionEnd,
+            Dictionary<uint, string> names, Data output)
+        {
+            Stream stream = reader.BaseStream;
+            while (stream.Position < sectionEnd)
+            {
+                if (sectionEnd - stream.Position < 10)
+                    throw new InvalidDataException("Truncated ObjectsList record header.");
+                uint index = reader.ReadUInt32();
+                ushort version = reader.ReadUInt16();
+                uint size = reader.ReadUInt32();
+                long end = stream.Position + (long)size;
+                if (end > sectionEnd || end < stream.Position)
+                    throw new InvalidDataException("Object record escapes its ObjectsList section.");
+                string recordName;
+                if (!names.TryGetValue(index, out recordName) || recordName != "Object")
+                {
+                    output.Warnings.Add("Skipping unrecognized ObjectsList record index " + index);
+                    stream.Position = end;
+                    continue;
+                }
+                if (end - stream.Position < 22)
+                    throw new InvalidDataException("Truncated Object coordinates or type name.");
+                var obj = new ObjectData
+                {
+                    X = reader.ReadSingle(),
+                    Y = reader.ReadSingle(),
+                    Z = reader.ReadSingle(),
+                    Angle = reader.ReadSingle(),
+                    RoadFlags = reader.ReadUInt32(),
+                    Version = version
+                };
+                ushort bytes = reader.ReadUInt16();
+                if (bytes > 2048 || bytes > end - stream.Position)
+                    throw new InvalidDataException("Invalid Object type name length.");
+                byte[] characters = reader.ReadBytes(bytes);
+                if (characters.Length != bytes)
+                    throw new InvalidDataException("Truncated Object type name.");
+                obj.TypeName = Encoding.ASCII.GetString(characters);
+                if (float.IsNaN(obj.X) || float.IsInfinity(obj.X) ||
+                    float.IsNaN(obj.Y) || float.IsInfinity(obj.Y) ||
+                    float.IsNaN(obj.Z) || float.IsInfinity(obj.Z) ||
+                    float.IsNaN(obj.Angle) || float.IsInfinity(obj.Angle))
+                    throw new InvalidDataException("Invalid Object coordinate or angle.");
+                if (output.Objects.Count >= MaxObjects)
+                    throw new InvalidDataException("Too many C&C3 objects (>100000).");
+                output.Objects.Add(obj);
+
+                // Preserve the raw source .map; per-object property collections
+                // are not decoded in Mode 1. Each record is byte-counted.
+                stream.Position = end;
+            }
         }
 
         private static string ReadMapString(BinaryReader reader)
