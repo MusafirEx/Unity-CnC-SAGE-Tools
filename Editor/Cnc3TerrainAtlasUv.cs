@@ -169,8 +169,10 @@ namespace MusafirEx.CncSage.Editor
         internal static Mesh BuildTile(Cnc3MapReader.Data map, Mapping atlas,
             int lowerX, int lowerY, int tileX, int tileY,
             float horizontalScale, float verticalScale, bool flip,
-            bool renderBlends)
+            bool renderBlends, bool renderCliffs)
         {
+            bool validCliffData = renderCliffs && map.CliffTextureIndices != null &&
+                map.CliffMappings.Count > 0;
             bool validBlendData = renderBlends && map.Blends != null &&
                 map.ThreeWayBlends != null && map.BlendDescriptions.Count > 0;
             int count = checked(tileX * tileY);
@@ -181,6 +183,9 @@ namespace MusafirEx.CncSage.Editor
             var tertiaryUv = validBlendData ? new Vector2[count * 4] : null;
             var directions = validBlendData ? new Vector4[count * 4] : null;
             var fraction = validBlendData ? new Vector2[count * 4] : null;
+            var cliffUV = validCliffData ? new Vector2[count * 4] : null;
+            var cliffRects = validCliffData ? new Vector4[count * 4] : null;
+            var cliffSizes = validCliffData ? new Vector2[count * 4] : null;
             var triangles = new int[count * 6];
             int vertexIndex = 0, triIndex = 0;
             for (int y = 0; y < tileY; y++)
@@ -193,6 +198,33 @@ namespace MusafirEx.CncSage.Editor
                 TileUvs baseCell = atlas.TileUvLookup[baseId];
                 TileUvs secondary = baseCell, tertiary = baseCell;
                 Vector4 blendFlags = Vector4.zero;
+                Cnc3MapReader.CliffMapping cliff = null;
+                Vector4 cliffRect = Vector4.zero;
+                float cliffCellWidth = 1;
+                if (validCliffData)
+                {
+                    uint index = map.CliffTextureIndices[sourceIndex];
+                    if (index > 0 && index <= map.CliffMappings.Count)
+                    {
+                        cliff = map.CliffMappings[(int)index - 1];
+                        for (int kind = 0; kind < map.TerrainTextures.Count; kind++)
+                        {
+                            var candidate = map.TerrainTextures[kind];
+                            if (cliff.TextureTile < candidate.TileStart ||
+                                cliff.TextureTile >= candidate.TileStart +
+                                    candidate.TileCount)
+                                continue;
+                            Cnc3AtlasTileEntry rect = atlas.AtlasRectForType[kind];
+                            cliffRect = new Vector4(
+                                rect.x0 / (float)atlas.BaseAtlas.width,
+                                1f - rect.y1 / (float)atlas.BaseAtlas.height,
+                                rect.x1 / (float)atlas.BaseAtlas.width,
+                                1f - rect.y0 / (float)atlas.BaseAtlas.height);
+                            cliffCellWidth = candidate.TileWidth;
+                            break;
+                        }
+                    }
+                }
                 if (validBlendData)
                 {
                     uint one = map.Blends[sourceIndex];
@@ -222,6 +254,12 @@ namespace MusafirEx.CncSage.Editor
                     HeightAt(map, gx, gy, flip, verticalScale), y * horizontalScale);
                 normals[i] = NormalAt(map, gx, gy, flip, horizontalScale, verticalScale);
                 baseUv[i] = baseCell.BL;
+                if (validCliffData)
+                {
+                    cliffUV[i] = cliff != null ? cliff.BottomLeft : Vector2.zero;
+                    cliffRects[i] = cliffRect;
+                    cliffSizes[i] = new Vector2(cliffCellWidth, cliff != null ? 1f : 0f);
+                }
                 if (validBlendData)
                 {
                     secondaryUv[i] = secondary.BL;
@@ -234,6 +272,12 @@ namespace MusafirEx.CncSage.Editor
                     HeightAt(map, gx, gy + 1, flip, verticalScale), (y + 1) * horizontalScale);
                 normals[i] = NormalAt(map, gx, gy + 1, flip, horizontalScale, verticalScale);
                 baseUv[i] = baseCell.TL;
+                if (validCliffData)
+                {
+                    cliffUV[i] = cliff != null ? cliff.TopLeft : Vector2.zero;
+                    cliffRects[i] = cliffRect;
+                    cliffSizes[i] = new Vector2(cliffCellWidth, cliff != null ? 1f : 0f);
+                }
                 if (validBlendData)
                 {
                     secondaryUv[i] = secondary.TL;
@@ -246,6 +290,12 @@ namespace MusafirEx.CncSage.Editor
                     HeightAt(map, gx + 1, gy, flip, verticalScale), y * horizontalScale);
                 normals[i] = NormalAt(map, gx + 1, gy, flip, horizontalScale, verticalScale);
                 baseUv[i] = baseCell.BR;
+                if (validCliffData)
+                {
+                    cliffUV[i] = cliff != null ? cliff.BottomRight : Vector2.zero;
+                    cliffRects[i] = cliffRect;
+                    cliffSizes[i] = new Vector2(cliffCellWidth, cliff != null ? 1f : 0f);
+                }
                 if (validBlendData)
                 {
                     secondaryUv[i] = secondary.BR;
@@ -259,6 +309,12 @@ namespace MusafirEx.CncSage.Editor
                     (y + 1) * horizontalScale);
                 normals[i] = NormalAt(map, gx + 1, gy + 1, flip, horizontalScale, verticalScale);
                 baseUv[i] = baseCell.TR;
+                if (validCliffData)
+                {
+                    cliffUV[i] = cliff != null ? cliff.TopRight : Vector2.zero;
+                    cliffRects[i] = cliffRect;
+                    cliffSizes[i] = new Vector2(cliffCellWidth, cliff != null ? 1f : 0f);
+                }
                 if (validBlendData)
                 {
                     secondaryUv[i] = secondary.TR;
@@ -285,6 +341,12 @@ namespace MusafirEx.CncSage.Editor
                 uv = baseUv,
                 triangles = triangles
             };
+            if (validCliffData)
+            {
+                mesh.SetUVs(5, new List<Vector2>(cliffUV));
+                mesh.SetUVs(6, new List<Vector4>(cliffRects));
+                mesh.SetUVs(7, new List<Vector2>(cliffSizes));
+            }
             if (validBlendData)
             {
                 mesh.uv2 = secondaryUv;
