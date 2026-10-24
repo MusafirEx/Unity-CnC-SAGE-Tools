@@ -68,12 +68,64 @@ def pack_refpack_literals(data):
     return bytes(output)
 
 
+
+def pack_refpack_with_matches(data):
+    """Test the 2-byte back-reference command, not just raw literal runs."""
+    if len(data) >= 0x1000000:
+        raise ValueError("three-byte length exceeded")
+    encoded = bytearray((0x10, 0xFB))
+    encoded.extend(len(data).to_bytes(3, "big"))
+    pending = bytearray()
+    index = 0
+
+    def flush_literals():
+        while len(pending) >= 4:
+            count = min(112, (len(pending) // 4) * 4)
+            encoded.append(0xE0 | (count // 4 - 1))
+            encoded.extend(pending[:count])
+            del pending[:count]
+
+    while index < len(data):
+        length, distance = 0, 0
+        for back in range(1, min(index, 1024) + 1):
+            n = 0
+            while n < 10 and index + n < len(data) and data[index + n] == data[index - back + n]:
+                n += 1
+            if n > length:
+                length, distance = n, back
+                if n == 10:
+                    break
+
+        if length >= 4:
+            flush_literals()
+            if len(pending) > 3 or length > 10 or distance > 1024:
+                raise AssertionError("invalid test encoder state")
+            offset = distance - 1
+            control = ((offset >> 8) << 5) | ((length - 3) << 2) | len(pending)
+            encoded.extend((control, offset & 0xFF))
+            encoded.extend(pending)
+            pending.clear()
+            index += length
+        else:
+            pending.append(data[index])
+            index += 1
+            if len(pending) >= 112:
+                flush_literals()
+
+    flush_literals()
+    encoded.append(0xFC | len(pending))
+    encoded.extend(pending)
+    return bytes(encoded)
+
+
 def main():
     raw = create_map()
     (HERE / "SageTerrainSynthetic.map").write_bytes(raw)
     packed = b"EAR\x00" + U32(len(raw)) + pack_refpack_literals(raw)
     (HERE / "SageTerrainSyntheticCompressed.map").write_bytes(packed)
-    print(f"Wrote uncompressed {len(raw)} bytes and EAR/RefPack {len(packed)} bytes.")
+    matched = b"EAR\x00" + U32(len(raw)) + pack_refpack_with_matches(raw)
+    (HERE / "SageTerrainSyntheticBackrefs.map").write_bytes(matched)
+    print(f"Wrote uncompressed {len(raw)} bytes, literal-compressed {len(packed)}, and backref-compressed {len(matched)}.")
     print("Both encode the same 12x10, version-6 heightmap and one placeholder object section.")
 
 
