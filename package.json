@@ -1,8 +1,8 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.9.7",
+  "version": "0.9.8",
   "displayName": "C&C SAGE Model Tools",
-  "description": "Unity C&C SAGE importer with per-map compiled stream validation, terrain atlas blending and standing water.",
+  "description": "C&C3/Kane's Wrath Unity map importer with source lighting presets, experimental cliff UVs and road control previews.",
   "unity": "2022.3",
   "keywords": [
     "command and conquer",

@@ -27,6 +27,22 @@ namespace MusafirEx.CncSage.Editor
             internal UnityEngine.Vector2[] Points;
         }
 
+        internal sealed class CliffMapping
+        {
+            internal int TextureTile;
+            internal UnityEngine.Vector2 BottomLeft, BottomRight, TopRight, TopLeft;
+        }
+
+        internal sealed class SageLight
+        {
+            internal UnityEngine.Vector3 Ambient, Color, Direction;
+        }
+
+        internal sealed class LightPreset
+        {
+            internal SageLight Sun, Accent1, Accent2;
+        }
+
         internal sealed class TerrainBlend
         {
             internal int SecondaryTile;
@@ -65,6 +81,10 @@ namespace MusafirEx.CncSage.Editor
             internal ushort[] TileValues;
             internal uint[] Blends;
             internal uint[] ThreeWayBlends;
+            internal uint[] CliffTextureIndices;
+            internal readonly List<CliffMapping> CliffMappings = new List<CliffMapping>();
+            internal int SourceTimeOfDay;
+            internal readonly LightPreset[] TerrainLighting = new LightPreset[4];
             internal readonly List<TerrainBlend> BlendDescriptions = new List<TerrainBlend>();
             internal readonly List<TerrainTexture> TerrainTextures = new List<TerrainTexture>();
             internal bool Compressed;
@@ -154,6 +174,8 @@ namespace MusafirEx.CncSage.Editor
                             result.TileValues = null;
                             result.Blends = null;
                             result.ThreeWayBlends = null;
+                            result.CliffTextureIndices = null;
+                            result.CliffMappings.Clear();
                             result.BlendDescriptions.Clear();
                             result.TerrainTextures.Clear();
                             result.Warnings.Add("BlendTileData could not be decoded: " +
@@ -163,6 +185,10 @@ namespace MusafirEx.CncSage.Editor
                     else if (name == "ObjectsList")
                     {
                         ReadObjects(reader, stop, names, result);
+                    }
+                    else if (name == "GlobalLighting")
+                    {
+                        ReadGlobalLighting(reader, stop, version, result);
                     }
                     else if (name == "GlobalWaterSettings")
                     {
@@ -184,6 +210,85 @@ namespace MusafirEx.CncSage.Editor
         }
 
 
+
+
+        private static bool Finite(UnityEngine.Vector2 value)
+        {
+            return !float.IsNaN(value.x) && !float.IsInfinity(value.x) &&
+                   !float.IsNaN(value.y) && !float.IsInfinity(value.y);
+        }
+
+        // GlobalLighting v7-v9: four time-of-day configs, nine 36-byte
+        // light triplets each (terrain/object/infantry, three accents).
+        // v10 and later use terrain-only triplets. Unsupported versions are
+        // deliberately left untouched rather than guessed.
+        private static void ReadGlobalLighting(BinaryReader reader, long stop,
+            ushort version, Data output)
+        {
+            if (version < 7 || version > 11)
+            {
+                output.Warnings.Add("Unsupported GlobalLighting version " + version);
+                return;
+            }
+            var stream = reader.BaseStream;
+            if (stop - stream.Position < 4)
+                throw new InvalidDataException("GlobalLighting header is truncated.");
+            uint time = reader.ReadUInt32();
+            if (time < 1 || time > 4)
+                throw new InvalidDataException("Invalid SAGE time of day.");
+            output.SourceTimeOfDay = checked((int)time);
+            for (int preset = 0; preset < 4; preset++)
+            {
+                var config = new LightPreset();
+                config.Sun = ReadSageLight(reader, stop);
+                if (version < 10)
+                {
+                    SkipTerrainBytes(stream, stop, 36); // object sun
+                    SkipTerrainBytes(stream, stop, 36); // infantry sun
+                }
+                config.Accent1 = ReadSageLight(reader, stop);
+                if (version < 10)
+                {
+                    SkipTerrainBytes(stream, stop, 36); // object accent
+                    SkipTerrainBytes(stream, stop, 36); // infantry accent
+                }
+                config.Accent2 = ReadSageLight(reader, stop);
+                if (version < 10)
+                {
+                    SkipTerrainBytes(stream, stop, 36); // object accent
+                    SkipTerrainBytes(stream, stop, 36); // infantry accent
+                }
+                output.TerrainLighting[preset] = config;
+            }
+            // Shadow RGBA + unknown or no-cloud settings are not used for
+            // this diffuse terrain-only preview. Keep the source bytes.
+        }
+
+        private static SageLight ReadSageLight(BinaryReader reader, long end)
+        {
+            if (end - reader.BaseStream.Position < 36)
+                throw new InvalidDataException("Truncated SAGE lighting configuration.");
+            var light = new SageLight
+            {
+                Ambient = new UnityEngine.Vector3(
+                    reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()),
+                Color = new UnityEngine.Vector3(
+                    reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle()),
+                Direction = new UnityEngine.Vector3(
+                    reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle())
+            };
+            if (!Finite(light.Ambient) || !Finite(light.Color) ||
+                !Finite(light.Direction))
+                throw new InvalidDataException("Invalid SAGE lighting vector.");
+            return light;
+        }
+
+        private static bool Finite(UnityEngine.Vector3 value)
+        {
+            return !float.IsNaN(value.x) && !float.IsInfinity(value.x) &&
+                !float.IsNaN(value.y) && !float.IsInfinity(value.y) &&
+                !float.IsNaN(value.z) && !float.IsInfinity(value.z);
+        }
 
         private static void ReadGlobalWater(BinaryReader reader, long stop, Data result)
         {
@@ -298,7 +403,9 @@ namespace MusafirEx.CncSage.Editor
                 blendIndices[i] = bits == 16 ? reader.ReadUInt16() : reader.ReadUInt32();
             for (int i = 0; i < count; i++)
                 threeWayIndices[i] = bits == 16 ? reader.ReadUInt16() : reader.ReadUInt32();
-            SkipTerrainBytes(stream, stop, (long)count * (bits / 8)); // CliffTextures
+            var cliffIndices = new uint[count];
+            for (int i = 0; i < count; i++)
+                cliffIndices[i] = bits == 16 ? reader.ReadUInt16() : reader.ReadUInt32();
             int rowBits = ((width + 7) / 8) * height;
             if (version > 6)
             {
@@ -408,8 +515,31 @@ namespace MusafirEx.CncSage.Editor
                     throw new InvalidDataException("ThreeWayBlends references invalid description ID.");
             output.Blends = blendIndices;
             output.ThreeWayBlends = threeWayIndices;
-            if (encodedCliffCount > 1)
-                output.Warnings.Add("CliffTextureMappings are not decoded by the terrain shader.");
+            output.CliffTextureIndices = cliffIndices;
+            int cliffCount = encodedCliffCount > 0
+                ? checked((int)encodedCliffCount - 1) : 0;
+            if (cliffCount > 65535 || 38L * cliffCount > stop - stream.Position)
+                throw new InvalidDataException("CliffTextureMappings exceed the source section.");
+            for (int i = 0; i < cliffCount; i++)
+            {
+                uint tileId = reader.ReadUInt32();
+                var bl = new UnityEngine.Vector2(reader.ReadSingle(), reader.ReadSingle());
+                var br = new UnityEngine.Vector2(reader.ReadSingle(), reader.ReadSingle());
+                var tr = new UnityEngine.Vector2(reader.ReadSingle(), reader.ReadSingle());
+                var tl = new UnityEngine.Vector2(reader.ReadSingle(), reader.ReadSingle());
+                reader.ReadUInt16(); // Unknown source tag; preserve input file unchanged.
+                if (tileId >= tilesIndexed ||
+                    !Finite(bl) || !Finite(br) || !Finite(tr) || !Finite(tl))
+                    throw new InvalidDataException("CliffTextureMapping contains invalid UVs or texture ID.");
+                output.CliffMappings.Add(new CliffMapping {
+                    TextureTile = checked((int)tileId),
+                    BottomLeft = bl, BottomRight = br,
+                    TopRight = tr, TopLeft = tl
+                });
+            }
+            foreach (uint index in cliffIndices)
+                if (index > cliffCount)
+                    throw new InvalidDataException("Cliff texture grid references invalid mapping ID.");
         }
 
         private static void SkipTerrainBytes(Stream stream, long limit, long length)
