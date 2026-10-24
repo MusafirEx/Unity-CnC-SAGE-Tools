@@ -36,11 +36,15 @@ namespace MusafirEx.CncSage.Editor
         public int compiledImportAddresses;
         public int compiledRelocationAddresses;
         public int manifestGameObjectNames;
+        public int manifestAssetCount;
+        public int manifestAssetsWithData;
         public int manifestTextureNames;
         public bool compiledManifestMatchesBin;
         public string compiledImportNote;
         public List<Cnc3CompiledTextureEntry> compiledTextures =
             new List<Cnc3CompiledTextureEntry>();
+        public List<Cnc3CompiledAssetEntry> compiledAssets =
+            new List<Cnc3CompiledAssetEntry>();
 
         // Persist the decoded placements even when placeholder GameObjects
         // are disabled, for later asset-binding in Mode 2.
@@ -52,12 +56,29 @@ namespace MusafirEx.CncSage.Editor
     {
         public string name;
         public string format;
+        public string ownerAsset;
         public int width;
         public int height;
         public int mipCount;
         public long offset;
         public int length;
         public Texture2D texture;
+    }
+
+    [Serializable]
+    public sealed class Cnc3CompiledAssetEntry
+    {
+        public string assetName;
+        public string sourceFile;
+        public uint typeId;
+        public uint instanceId;
+        public int binaryOffset;
+        public int binaryLength;
+        public int importOffset;
+        public int importLength;
+        public int relocationOffset;
+        public int relocationLength;
+        public uint referenceCount;
     }
 
     [Serializable]
