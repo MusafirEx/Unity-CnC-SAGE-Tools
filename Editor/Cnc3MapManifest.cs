@@ -19,6 +19,11 @@ namespace MusafirEx.CncSage.Editor
         public string terrainAtlasStatus;
         public int terrainSourceTextureCount;
         public int terrainTextureMatchCount;
+        public bool terrainBlendingApplied;
+        public int terrainBlendDescriptionCount;
+        public int terrainFirstBlendCells;
+        public int terrainThreeWayBlendCells;
+        public string terrainBlendStatus;
         public int objectCount;
         public int objectMarkerCount;
         public int distinctObjectTypes;

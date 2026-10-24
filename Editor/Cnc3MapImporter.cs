@@ -12,7 +12,7 @@ namespace MusafirEx.CncSage.Editor
     /// First-pass C&C 3 / Kane's Wrath World Builder .map importer.
     /// Source map remains untouched. Mode 1: terrain and source object placeholders.
     /// </summary>
-    [ScriptedImporter(4, "map")]
+    [ScriptedImporter(5, "map")]
     public sealed class Cnc3MapImporter : ScriptedImporter
     {
         [Tooltip("Reconstruct HeightMapData as tiled, editable Unity mesh sub-assets.")]
@@ -57,6 +57,9 @@ namespace MusafirEx.CncSage.Editor
 
         [Tooltip("Apply compiled map.bin base-color atlas to terrain cells using exact SAGE texture hashes and BlendTileData tile UVs. Does not implement secondary/three-way blends.")]
         public bool applyAtlasToTerrain = true;
+
+        [Tooltip("Blend secondary and three-way terrain texture layers using SAGE blend directions. Requires the compiled diffuse atlas and bundled SAGE blend shader.")]
+        public bool renderTerrainBlending = true;
 
         public override void OnImportAsset(AssetImportContext context)
         {
@@ -262,14 +265,52 @@ namespace MusafirEx.CncSage.Editor
             report.terrainTextureMatchCount = useAtlas ? map.TerrainTextures.Count : 0;
             report.terrainSourceTextureCount = map.TerrainTextures.Count;
 
+            report.terrainBlendDescriptionCount = map.BlendDescriptions.Count;
+            if (map.Blends != null && map.ThreeWayBlends != null)
+            {
+                for (int i = 0; i < map.Blends.Length; i++)
+                {
+                    if (map.Blends[i] != 0) report.terrainFirstBlendCells++;
+                    if (map.ThreeWayBlends[i] != 0) report.terrainThreeWayBlendCells++;
+                }
+            }
+            Shader blendShader = null;
+            if (useAtlas && renderTerrainBlending &&
+                report.terrainBlendDescriptionCount > 0)
+            {
+                const string packageShader = "Packages/com.musafirex.cnc-sage-tools/Shaders/Cnc3TerrainAtlasBlend.shader";
+                blendShader = AssetDatabase.LoadAssetAtPath<Shader>(packageShader);
+                if (blendShader == null)
+                    blendShader = Shader.Find("MusafirEx/SAGE Terrain Atlas Blend");
+                if (blendShader != null)
+                    context.DependsOnSourceAsset(packageShader);
+            }
+            bool useBlending = blendShader != null && blendShader.isSupported &&
+                useAtlas && renderTerrainBlending && map.Blends != null &&
+                map.ThreeWayBlends != null && map.BlendDescriptions.Count > 0;
+            report.terrainBlendingApplied = useBlending;
+            report.terrainBlendStatus = useBlending
+                ? "Two-way and three-way blending active in SAGE shader."
+                : (!renderTerrainBlending ? "Blending disabled in Inspector."
+                : (!useAtlas ? "Compiled base atlas not available."
+                : (map.BlendDescriptions.Count == 0
+                    ? "Map has no blend descriptions."
+                    : "SAGE blend shader missing or unsupported by this render pipeline.")));
+            if (!useBlending && useAtlas && renderTerrainBlending &&
+                map.BlendDescriptions.Count > 0)
+                Debug.LogWarning("[C&C SAGE TERRAIN] " + report.terrainBlendStatus);
+
             Material displayMat = terrainMaterial;
             if (useAtlas && displayMat != null)
             {
                 // A user-provided .mat must never be changed in place.
                 displayMat = new Material(displayMat)
                 {
-                    name = "CNC3_Atlas_Terrain_Preview"
+                    name = useBlending ? "CNC3_Terrain_AtlasBlend" :
+                        "CNC3_Atlas_Terrain_Preview"
                 };
+                if (useBlending)
+                    displayMat.shader = blendShader;
                 context.AddObjectToAsset("CNC3_Terrain_Atlas_Material", displayMat);
             }
             if (displayMat == null)
@@ -277,7 +318,7 @@ namespace MusafirEx.CncSage.Editor
                 // Prefer an unlit shader compatible with the current render
                 // pipeline. The Built-In unlit shader can appear pink in URP.
                 bool srp = GraphicsSettings.currentRenderPipeline != null;
-                Shader shader = useAtlas
+                Shader shader = useBlending ? blendShader : useAtlas
                     ? (srp
                         ? (Shader.Find("Universal Render Pipeline/Unlit") ??
                             Shader.Find("HDRP/Unlit") ??
@@ -325,7 +366,7 @@ namespace MusafirEx.CncSage.Editor
                 {
                     Mesh texturedMesh = Cnc3TerrainAtlasUv.BuildTile(map, atlasMapping,
                         lowerX, lowerY, tileX, tileY, hScale, vScale,
-                        flipMapNorthSouth);
+                        flipMapNorthSouth, useBlending);
                     context.AddObjectToAsset("CNC3_Terrain_" + counter, texturedMesh);
                     var texturedTile = new GameObject(texturedMesh.name);
                     texturedTile.transform.SetParent(terrain, false);
@@ -472,7 +513,8 @@ namespace MusafirEx.CncSage.Editor
             EditorGUILayout.HelpBox("Mode 1 imports .map terrain and object markers. " +
                 "Mode 2 optionally finds compiled map.bin / map.imp / map.relo / map.manifest " +
                 "and maps 43 source terrain texture IDs into atlas UVs when enabled. " +
-                "Secondary/three-way blending, roads and compiled object meshes remain unsupported.", MessageType.Info);
+                "Two-way/three-way terrain blending is optional; cliff overlays, roads " +
+                "and compiled object meshes remain unsupported.", MessageType.Info);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("importTerrain"),
                 new GUIContent("Import Terrain"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("horizontalScale"));
@@ -489,6 +531,7 @@ namespace MusafirEx.CncSage.Editor
             EditorGUILayout.PropertyField(serializedObject.FindProperty("importCompiledAtlases"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("inspectCompiledIndexes"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("applyAtlasToTerrain"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("renderTerrainBlending"));
 
             var importer = target as Cnc3MapImporter;
             if (importer != null)
@@ -505,7 +548,14 @@ namespace MusafirEx.CncSage.Editor
                     EditorGUILayout.LabelField("Compression", report.wasCompressed ? "EAR / RefPack" : "CkMp");
                     EditorGUILayout.LabelField("Terrain Tiles", report.tileCount.ToString());
                     EditorGUILayout.LabelField("Atlas Applied To Terrain",
-                        report.terrainAtlasApplied ? "Yes — base texture UVs" : "No");
+                        report.terrainAtlasApplied ? "Yes — diffuse atlas" : "No");
+                    EditorGUILayout.LabelField("Texture Blending",
+                        report.terrainBlendingApplied ? "Active (two-way + three-way)" : "Off");
+                    EditorGUILayout.LabelField("First Blend Cells", report.terrainFirstBlendCells.ToString("N0"));
+                    EditorGUILayout.LabelField("Three-Way Blend Cells", report.terrainThreeWayBlendCells.ToString("N0"));
+                    EditorGUILayout.LabelField("Blend Descriptions", report.terrainBlendDescriptionCount.ToString("N0"));
+                    if (!string.IsNullOrEmpty(report.terrainBlendStatus))
+                        EditorGUILayout.HelpBox(report.terrainBlendStatus, MessageType.Info);
                     EditorGUILayout.LabelField("Source Terrain Textures",
                         report.terrainSourceTextureCount.ToString());
                     EditorGUILayout.LabelField("Texture IDs Matched",

@@ -6,18 +6,25 @@ using UnityEngine.Rendering;
 namespace MusafirEx.CncSage.Editor
 {
     /// <summary>
-    /// Direct per-cell atlas UV mapping for SAGE's 32x32 texture tile grid.
-    /// Duplicates vertices along terrain cell seams so adjacent cells may
-    /// sample different subrectangles of the same atlas without UV conflicts.
-    /// Only base texture mapping is implemented. Blend descriptions are a
-    /// separate shader-stage feature and are NOT silently approximated.
+    /// Map each C&C3 terrain base/secondary/tertiary tile to one packed DDS
+    /// atlas; encode blend direction and flags for SAGE shader use.
+    /// The asset is always read only; source tiles remain unmodified.
     /// </summary>
     internal static class Cnc3TerrainAtlasUv
     {
+        internal struct TileUvs
+        {
+            internal Vector2 BL;
+            internal Vector2 TL;
+            internal Vector2 BR;
+            internal Vector2 TR;
+        }
+
         internal sealed class Mapping
         {
             internal Texture2D BaseAtlas;
             internal Cnc3AtlasTileEntry[] AtlasRectForType;
+            internal TileUvs[] TileUvLookup;
         }
 
         internal static bool TryMap(Cnc3MapReader.Data map,
@@ -38,6 +45,7 @@ namespace MusafirEx.CncSage.Editor
             }
             Texture2D atlas = null;
             foreach (var image in manifest.compiledTextures)
+            {
                 if (image != null && image.texture != null &&
                     image.format == "BC3/DXT5" &&
                     image.ownerAsset == manifest.compiledAtlasAssetName)
@@ -45,12 +53,12 @@ namespace MusafirEx.CncSage.Editor
                     atlas = image.texture;
                     break;
                 }
+            }
             if (atlas == null)
             {
                 reason = "Decoded BC3 base DDS atlas was not found in map.bin.";
                 return false;
             }
-
             var rectByHash = new Dictionary<uint, Cnc3AtlasTileEntry>();
             foreach (var atlasTile in manifest.compiledAtlasTiles)
             {
@@ -59,145 +67,233 @@ namespace MusafirEx.CncSage.Editor
                     atlasTile.x0 >= atlasTile.x1 ||
                     atlasTile.y0 >= atlasTile.y1)
                 {
-                    reason = "Compiled atlas tile rectangle exceeds texture bounds.";
+                    reason = "Compiled atlas rectangle exceeds DDS image.";
                     return false;
                 }
-                rectByHash[atlasTile.textureId] = atlasTile;
+                if (rectByHash.ContainsKey(atlasTile.textureId))
+                {
+                    reason = "Duplicate TerrainTextureAtlas TextureID.";
+                    return false;
+                }
+                rectByHash.Add(atlasTile.textureId, atlasTile);
             }
             var mapped = new Cnc3AtlasTileEntry[map.TerrainTextures.Count];
+            int tileCount = 0;
             for (int i = 0; i < mapped.Length; i++)
             {
-                var source = map.TerrainTextures[i];
-                Cnc3AtlasTileEntry atlasTile;
-                if (!rectByHash.TryGetValue(source.TextureId, out atlasTile))
+                Cnc3MapReader.TerrainTexture source = map.TerrainTextures[i];
+                if (!rectByHash.TryGetValue(source.TextureId, out mapped[i]))
                 {
-                    reason = "Cannot resolve SAGE terrain texture '" + source.Name +
-                        "' (0x" + source.TextureId.ToString("X8") + ") in compiled atlas.";
+                    reason = "Missing SAGE texture hash " + source.Name +
+                        " (0x" + source.TextureId.ToString("X8") + ") in atlas.";
                     return false;
                 }
-                if ((atlasTile.x1 - atlasTile.x0) % source.TileWidth != 0 ||
-                    (atlasTile.y1 - atlasTile.y0) % source.TileWidth != 0)
+                Cnc3AtlasTileEntry rect = mapped[i];
+                if (rect.x0 < 0 || rect.y0 < 0 ||
+                    rect.x1 > atlas.width || rect.y1 > atlas.height ||
+                    (rect.x1 - rect.x0) % source.TileWidth != 0 ||
+                    (rect.y1 - rect.y0) % source.TileWidth != 0)
                 {
-                    reason = "Atlas tile size incompatible with " + source.Name + ".";
+                    reason = "Atlas cell size incompatible with " + source.Name + ".";
                     return false;
                 }
-                mapped[i] = atlasTile;
+                tileCount = Math.Max(tileCount, source.TileStart + source.TileCount);
+            }
+            if (tileCount < 1 || tileCount > 65536)
+            {
+                reason = "Too many source texture subtiles.";
+                return false;
+            }
+
+            // Every tile index is resolved once, not repeatedly during mesh generation.
+            // Offsets use Morton/Z-order exactly as SAGE BlendTileTextureIndex.
+            var uvByTile = new TileUvs[tileCount];
+            for (int i = 0; i < mapped.Length; i++)
+            {
+                Cnc3MapReader.TerrainTexture source = map.TerrainTextures[i];
+                Cnc3AtlasTileEntry rect = mapped[i];
+                float pixelWidth = (rect.x1 - rect.x0) / (float)source.TileWidth;
+                float pixelHeight = (rect.y1 - rect.y0) / (float)source.TileWidth;
+                for (int local = 0; local < source.TileCount; local++)
+                {
+                    int x = 0, y = 0;
+                    for (int bit = 0; (1 << bit) < source.TileWidth; bit++)
+                    {
+                        x |= ((local >> (2 * bit)) & 1) << bit;
+                        y |= ((local >> (2 * bit + 1)) & 1) << bit;
+                    }
+                    const float inset = 0.25f;
+                    float u0 = (rect.x0 + x * pixelWidth + inset) / atlas.width;
+                    float u1 = (rect.x0 + (x + 1) * pixelWidth - inset) / atlas.width;
+                    // Source DDS row 0 is the top image row; Unity V is upward.
+                    float v0 = 1f - (rect.y1 - y * pixelHeight - inset) / atlas.height;
+                    float v1 = 1f - (rect.y1 - (y + 1) * pixelHeight + inset) / atlas.height;
+                    uvByTile[source.TileStart + local] = new TileUvs
+                    {
+                        BL = new Vector2(u0, v0),
+                        TL = new Vector2(u0, v1),
+                        BR = new Vector2(u1, v0),
+                        TR = new Vector2(u1, v1)
+                    };
+                }
             }
             result = new Mapping
             {
                 BaseAtlas = atlas,
-                AtlasRectForType = mapped
+                AtlasRectForType = mapped,
+                TileUvLookup = uvByTile
             };
             return true;
         }
 
-        private static float HeightAt(Cnc3MapReader.Data map, int gx,
-            int gy, bool flip, float verticalScale)
+        private static float HeightAt(Cnc3MapReader.Data map, int x, int y,
+            bool flip, float verticalScale)
         {
-            gx = Mathf.Clamp(gx, 0, map.Width - 1);
-            gy = Mathf.Clamp(gy, 0, map.Height - 1);
-            int y = flip ? map.Height - 1 - gy : gy;
-            return map.Elevations[y * map.Width + gx] * verticalScale;
+            x = Mathf.Clamp(x, 0, map.Width - 1);
+            y = Mathf.Clamp(y, 0, map.Height - 1);
+            int sourceY = flip ? map.Height - 1 - y : y;
+            return map.Elevations[sourceY * map.Width + x] * verticalScale;
         }
 
         private static Vector3 NormalAt(Cnc3MapReader.Data map, int gx,
-            int gy, bool flip, float horizontalScale, float verticalScale)
+            int gy, bool flip, float hScale, float vScale)
         {
-            float hL = HeightAt(map, gx - 1, gy, flip, verticalScale);
-            float hR = HeightAt(map, gx + 1, gy, flip, verticalScale);
-            float hD = HeightAt(map, gx, gy - 1, flip, verticalScale);
-            float hU = HeightAt(map, gx, gy + 1, flip, verticalScale);
-            return new Vector3(-(hR - hL) / (2f * horizontalScale),
-                1f, -(hU - hD) / (2f * horizontalScale)).normalized;
+            float l = HeightAt(map, gx - 1, gy, flip, vScale);
+            float r = HeightAt(map, gx + 1, gy, flip, vScale);
+            float d = HeightAt(map, gx, gy - 1, flip, vScale);
+            float u = HeightAt(map, gx, gy + 1, flip, vScale);
+            return new Vector3(-(r - l) / (2f * hScale),
+                1f, -(u - d) / (2f * hScale)).normalized;
         }
 
         internal static Mesh BuildTile(Cnc3MapReader.Data map, Mapping atlas,
             int lowerX, int lowerY, int tileX, int tileY,
-            float horizontalScale, float verticalScale, bool flip)
+            float horizontalScale, float verticalScale, bool flip,
+            bool renderBlends)
         {
+            bool validBlendData = renderBlends && map.Blends != null &&
+                map.ThreeWayBlends != null && map.BlendDescriptions.Count > 0;
             int count = checked(tileX * tileY);
             var vertices = new Vector3[count * 4];
             var normals = new Vector3[count * 4];
-            var uv = new Vector2[count * 4];
+            var baseUv = new Vector2[count * 4];
+            var secondaryUv = validBlendData ? new Vector2[count * 4] : null;
+            var tertiaryUv = validBlendData ? new Vector2[count * 4] : null;
+            var directions = validBlendData ? new Vector4[count * 4] : null;
+            var fraction = validBlendData ? new Vector2[count * 4] : null;
             var triangles = new int[count * 6];
-            int n = 0, t = 0;
+            int vertexIndex = 0, triIndex = 0;
             for (int y = 0; y < tileY; y++)
             for (int x = 0; x < tileX; x++)
             {
                 int gx = lowerX + x, gy = lowerY + y;
                 int sourceY = flip ? map.Height - 1 - gy : gy;
-                ushort tileIndex = map.TileValues[sourceY * map.Width + gx];
-                Cnc3MapReader.TerrainTexture info = null;
-                Cnc3AtlasTileEntry rect = null;
-                for (int i = 0; i < map.TerrainTextures.Count; i++)
+                int sourceIndex = checked(sourceY * map.Width + gx);
+                int baseId = map.TileValues[sourceIndex];
+                TileUvs baseCell = atlas.TileUvLookup[baseId];
+                TileUvs secondary = baseCell, tertiary = baseCell;
+                Vector4 blendFlags = Vector4.zero;
+                if (validBlendData)
                 {
-                    var candidate = map.TerrainTextures[i];
-                    if (tileIndex >= candidate.TileStart &&
-                        tileIndex < candidate.TileStart + candidate.TileCount)
+                    uint one = map.Blends[sourceIndex];
+                    uint two = map.ThreeWayBlends[sourceIndex];
+                    if (one > 0)
                     {
-                        info = candidate;
-                        rect = atlas.AtlasRectForType[i];
-                        break;
+                        Cnc3MapReader.TerrainBlend desc =
+                            map.BlendDescriptions[checked((int)one - 1)];
+                        secondary = atlas.TileUvLookup[desc.SecondaryTile];
+                        blendFlags.x = desc.Direction;
+                        blendFlags.y = (desc.Flags & 1) +
+                            (desc.TwoSided ? 2 : 0);
+                    }
+                    if (two > 0)
+                    {
+                        Cnc3MapReader.TerrainBlend desc =
+                            map.BlendDescriptions[checked((int)two - 1)];
+                        tertiary = atlas.TileUvLookup[desc.SecondaryTile];
+                        blendFlags.z = desc.Direction;
+                        blendFlags.w = (desc.Flags & 1) +
+                            (desc.TwoSided ? 2 : 0);
                     }
                 }
-                if (info == null || rect == null)
-                    throw new InvalidOperationException("Invalid C&C3 terrain texture tile " + tileIndex);
-                int morton = tileIndex - info.TileStart;
-                int cellX = 0, cellY = 0;
-                for (int bit = 0; (1 << bit) < info.TileWidth; bit++)
-                {
-                    cellX |= ((morton >> (2 * bit)) & 1) << bit;
-                    cellY |= ((morton >> (2 * bit + 1)) & 1) << bit;
-                }
-                float cellWidth = (rect.x1 - rect.x0) / (float)info.TileWidth;
-                float cellHeight = (rect.y1 - rect.y0) / (float)info.TileWidth;
-                float atlasW = atlas.BaseAtlas.width, atlasH = atlas.BaseAtlas.height;
-                const float inset = 0.25f; // Avoid filtering the adjacent atlas subtile.
-                float u0 = (rect.x0 + cellX * cellWidth + inset) / atlasW;
-                float u1 = (rect.x0 + (cellX + 1) * cellWidth - inset) / atlasW;
-                // DDS and decoded Unity atlas both use top-row source coordinates.
-                // Unity UV V increases upward; source tile offset 0 is bottom-left.
-                float v0 = 1f - (rect.y1 - cellY * cellHeight - inset) / atlasH;
-                float v1 = 1f - (rect.y1 - (cellY + 1) * cellHeight + inset) / atlasH;
-                int baseVertex = n;
-                vertices[n] = new Vector3(x * horizontalScale,
+
+                int i = vertexIndex;
+                vertices[i] = new Vector3(x * horizontalScale,
                     HeightAt(map, gx, gy, flip, verticalScale), y * horizontalScale);
-                normals[n] = NormalAt(map, gx, gy, flip, horizontalScale, verticalScale);
-                uv[n++] = new Vector2(u0, v0);
-
-                vertices[n] = new Vector3(x * horizontalScale,
+                normals[i] = NormalAt(map, gx, gy, flip, horizontalScale, verticalScale);
+                baseUv[i] = baseCell.BL;
+                if (validBlendData)
+                {
+                    secondaryUv[i] = secondary.BL;
+                    tertiaryUv[i] = tertiary.BL;
+                    directions[i] = blendFlags;
+                    fraction[i] = Vector2.zero;
+                }
+                i++;
+                vertices[i] = new Vector3(x * horizontalScale,
                     HeightAt(map, gx, gy + 1, flip, verticalScale), (y + 1) * horizontalScale);
-                normals[n] = NormalAt(map, gx, gy + 1, flip, horizontalScale, verticalScale);
-                uv[n++] = new Vector2(u0, v1);
-
-                vertices[n] = new Vector3((x + 1) * horizontalScale,
+                normals[i] = NormalAt(map, gx, gy + 1, flip, horizontalScale, verticalScale);
+                baseUv[i] = baseCell.TL;
+                if (validBlendData)
+                {
+                    secondaryUv[i] = secondary.TL;
+                    tertiaryUv[i] = tertiary.TL;
+                    directions[i] = blendFlags;
+                    fraction[i] = new Vector2(0f, 1f);
+                }
+                i++;
+                vertices[i] = new Vector3((x + 1) * horizontalScale,
                     HeightAt(map, gx + 1, gy, flip, verticalScale), y * horizontalScale);
-                normals[n] = NormalAt(map, gx + 1, gy, flip, horizontalScale, verticalScale);
-                uv[n++] = new Vector2(u1, v0);
+                normals[i] = NormalAt(map, gx + 1, gy, flip, horizontalScale, verticalScale);
+                baseUv[i] = baseCell.BR;
+                if (validBlendData)
+                {
+                    secondaryUv[i] = secondary.BR;
+                    tertiaryUv[i] = tertiary.BR;
+                    directions[i] = blendFlags;
+                    fraction[i] = new Vector2(1f, 0f);
+                }
+                i++;
+                vertices[i] = new Vector3((x + 1) * horizontalScale,
+                    HeightAt(map, gx + 1, gy + 1, flip, verticalScale),
+                    (y + 1) * horizontalScale);
+                normals[i] = NormalAt(map, gx + 1, gy + 1, flip, horizontalScale, verticalScale);
+                baseUv[i] = baseCell.TR;
+                if (validBlendData)
+                {
+                    secondaryUv[i] = secondary.TR;
+                    tertiaryUv[i] = tertiary.TR;
+                    directions[i] = blendFlags;
+                    fraction[i] = Vector2.one;
+                }
+                i++;
 
-                vertices[n] = new Vector3((x + 1) * horizontalScale,
-                    HeightAt(map, gx + 1, gy + 1, flip, verticalScale), (y + 1) * horizontalScale);
-                normals[n] = NormalAt(map, gx + 1, gy + 1, flip, horizontalScale, verticalScale);
-                uv[n++] = new Vector2(u1, v1);
-
-                triangles[t++] = baseVertex;
-                triangles[t++] = baseVertex + 1;
-                triangles[t++] = baseVertex + 2;
-                triangles[t++] = baseVertex + 2;
-                triangles[t++] = baseVertex + 1;
-                triangles[t++] = baseVertex + 3;
+                triangles[triIndex++] = vertexIndex;
+                triangles[triIndex++] = vertexIndex + 1;
+                triangles[triIndex++] = vertexIndex + 2;
+                triangles[triIndex++] = vertexIndex + 2;
+                triangles[triIndex++] = vertexIndex + 1;
+                triangles[triIndex++] = vertexIndex + 3;
+                vertexIndex += 4;
             }
-            var result = new Mesh
+            var mesh = new Mesh
             {
                 name = "SAGE_AtlasTerrain_" + lowerX + "_" + lowerY,
                 indexFormat = IndexFormat.UInt16,
                 vertices = vertices,
                 normals = normals,
-                uv = uv,
+                uv = baseUv,
                 triangles = triangles
             };
-            result.RecalculateBounds();
-            return result;
+            if (validBlendData)
+            {
+                mesh.uv2 = secondaryUv;
+                mesh.uv3 = tertiaryUv;
+                mesh.SetUVs(3, new List<Vector4>(directions));
+                mesh.SetUVs(4, new List<Vector2>(fraction));
+            }
+            mesh.RecalculateBounds();
+            return mesh;
         }
     }
 }
