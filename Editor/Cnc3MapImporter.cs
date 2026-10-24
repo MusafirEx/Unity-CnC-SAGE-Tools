@@ -12,7 +12,7 @@ namespace MusafirEx.CncSage.Editor
     /// First-pass C&C 3 / Kane's Wrath World Builder .map importer.
     /// Source map remains untouched. Mode 1: terrain and source object placeholders.
     /// </summary>
-    [ScriptedImporter(3, "map")]
+    [ScriptedImporter(4, "map")]
     public sealed class Cnc3MapImporter : ScriptedImporter
     {
         [Tooltip("Reconstruct HeightMapData as tiled, editable Unity mesh sub-assets.")]
@@ -55,6 +55,9 @@ namespace MusafirEx.CncSage.Editor
         [Tooltip("Validate map.imp, map.relo and map.manifest against map.bin without interpreting opaque asset bodies.")]
         public bool inspectCompiledIndexes = true;
 
+        [Tooltip("Apply compiled map.bin base-color atlas to terrain cells using exact SAGE texture hashes and BlendTileData tile UVs. Does not implement secondary/three-way blends.")]
+        public bool applyAtlasToTerrain = true;
+
         public override void OnImportAsset(AssetImportContext context)
         {
             Cnc3MapReader.Data map = Cnc3MapReader.Read(context.assetPath);
@@ -89,12 +92,14 @@ namespace MusafirEx.CncSage.Editor
             report.distinctObjectTypes = types.Count;
             context.AddObjectToAsset("CNC3_Map_Info", report);
 
+            // Load compiled textures and atlas descriptors before building
+            // the ground, otherwise the terrain mesh/material cannot bind them.
+            if (importCompiledAtlases || inspectCompiledIndexes || applyAtlasToTerrain)
+                ImportCompiledAssets(context, report);
             if (importTerrain)
                 BuildTerrain(context, root, map, report);
             if (importObjects)
                 report.objectMarkerCount = BuildObjectPlaceholders(root, map);
-            if (importCompiledAtlases || inspectCompiledIndexes)
-                ImportCompiledAssets(context, report);
 
             foreach (string warning in map.Warnings)
                 Debug.LogWarning("[C&C SAGE MAP] " + context.assetPath + ": " + warning);
@@ -121,7 +126,8 @@ namespace MusafirEx.CncSage.Editor
             try
             {
                 Cnc3CompiledMapReader.Result compiled =
-                    Cnc3CompiledMapReader.Read(compiledPath, importCompiledAtlases);
+                    Cnc3CompiledMapReader.Read(compiledPath,
+                        importCompiledAtlases || applyAtlasToTerrain);
                 report.hasCompiledBin = true;
                 report.compiledBinSize = compiled.BinarySize;
                 report.compiledMetadataBytes = compiled.MetadataBytes;
@@ -145,7 +151,7 @@ namespace MusafirEx.CncSage.Editor
                     });
                 }
 
-                if (inspectCompiledIndexes)
+                if (inspectCompiledIndexes || applyAtlasToTerrain)
                 {
                     string[] companions = { "map.imp", "map.relo", "map.manifest" };
                     foreach (string filename in companions)
@@ -232,12 +238,40 @@ namespace MusafirEx.CncSage.Editor
                 Mathf.Approximately(vScale, 0.0390625f))
                 vScale = 0.625f;
 
+            Cnc3TerrainAtlasUv.Mapping atlasMapping;
+            string mappingProblem = "";
+            bool useAtlas = applyAtlasToTerrain &&
+                Cnc3TerrainAtlasUv.TryMap(map, report, out atlasMapping, out mappingProblem);
+            if (!useAtlas)
+            {
+                atlasMapping = null;
+                if (applyAtlasToTerrain && report.hasCompiledBin)
+                    Debug.LogWarning("[C&C SAGE TERRAIN] Base atlas was not bound: " +
+                        mappingProblem);
+            }
+            report.terrainAtlasApplied = useAtlas;
+            report.terrainTextureMatchCount = useAtlas ? map.TerrainTextures.Count : 0;
+            report.terrainSourceTextureCount = map.TerrainTextures.Count;
+
             Material displayMat = terrainMaterial;
+            if (useAtlas && displayMat != null)
+            {
+                // A user-provided .mat must never be changed in place.
+                displayMat = new Material(displayMat)
+                {
+                    name = "CNC3_Atlas_Terrain_Preview"
+                };
+                context.AddObjectToAsset("CNC3_Terrain_Atlas_Material", displayMat);
+            }
             if (displayMat == null)
             {
-                Shader shader = Shader.Find("Standard") ??
-                    Shader.Find("Universal Render Pipeline/Lit") ??
-                    Shader.Find("Unlit/Color");
+                Shader shader = useAtlas
+                    ? (Shader.Find("Unlit/Texture") ??
+                        Shader.Find("Universal Render Pipeline/Unlit") ??
+                        Shader.Find("Standard"))
+                    : (Shader.Find("Standard") ??
+                        Shader.Find("Universal Render Pipeline/Lit") ??
+                        Shader.Find("Unlit/Color"));
                 if (shader == null)
                     throw new InvalidDataException("No suitable Unity terrain preview shader.");
                 displayMat = new Material(shader) { name = "CNC3_Terrain_Preview" };
@@ -251,6 +285,15 @@ namespace MusafirEx.CncSage.Editor
                     context.DependsOnSourceAsset(assetPath);
             }
 
+            if (useAtlas)
+            {
+                Texture2D atlas = atlasMapping.BaseAtlas;
+                if (displayMat.HasProperty("_MainTex"))
+                    displayMat.SetTexture("_MainTex", atlas);
+                if (displayMat.HasProperty("_BaseMap"))
+                    displayMat.SetTexture("_BaseMap", atlas);
+                displayMat.mainTexture = atlas;
+            }
             var terrain = new GameObject("SAGE_Terrain").transform;
             terrain.SetParent(root.transform, false);
             const int cellsPerTile = 64;
@@ -261,6 +304,24 @@ namespace MusafirEx.CncSage.Editor
             {
                 int tileX = Math.Min(cellsPerTile, endX - lowerX);
                 int tileY = Math.Min(cellsPerTile, endY - lowerY);
+                if (useAtlas)
+                {
+                    Mesh texturedMesh = Cnc3TerrainAtlasUv.BuildTile(map, atlasMapping,
+                        lowerX, lowerY, tileX, tileY, hScale, vScale,
+                        flipMapNorthSouth);
+                    context.AddObjectToAsset("CNC3_Terrain_" + counter, texturedMesh);
+                    var texturedTile = new GameObject(texturedMesh.name);
+                    texturedTile.transform.SetParent(terrain, false);
+                    texturedTile.transform.localPosition = new Vector3(
+                        lowerX * hScale, 0, lowerY * hScale);
+                    texturedTile.AddComponent<MeshFilter>().sharedMesh = texturedMesh;
+                    texturedTile.AddComponent<MeshRenderer>().sharedMaterial = displayMat;
+                    if (addMeshColliders)
+                        texturedTile.AddComponent<MeshCollider>().sharedMesh = texturedMesh;
+                    counter++;
+                    continue;
+                }
+
                 int row = tileX + 1;
                 var positions = new Vector3[row * (tileY + 1)];
                 var uv = new Vector2[positions.Length];
@@ -393,8 +454,8 @@ namespace MusafirEx.CncSage.Editor
             EditorGUILayout.LabelField("C&C 3 World Builder Map", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox("Mode 1 imports .map terrain and object markers. " +
                 "Mode 2 optionally finds compiled map.bin / map.imp / map.relo / map.manifest " +
-                "and extracts supported embedded atlases. Compiled W3D meshes, true terrain " +
-                "blending and object material mappings are not yet reconstructed.", MessageType.Info);
+                "and maps 43 source terrain texture IDs into atlas UVs when enabled. " +
+                "Secondary/three-way blending, roads and compiled object meshes remain unsupported.", MessageType.Info);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("importTerrain"),
                 new GUIContent("Import Terrain"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("horizontalScale"));
@@ -410,6 +471,7 @@ namespace MusafirEx.CncSage.Editor
             EditorGUILayout.LabelField("Mode 2 — Compiled Map BIN", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("importCompiledAtlases"));
             EditorGUILayout.PropertyField(serializedObject.FindProperty("inspectCompiledIndexes"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("applyAtlasToTerrain"));
 
             var importer = target as Cnc3MapImporter;
             if (importer != null)
@@ -425,6 +487,12 @@ namespace MusafirEx.CncSage.Editor
                     EditorGUILayout.LabelField("Heightmap Version", report.heightVersion.ToString());
                     EditorGUILayout.LabelField("Compression", report.wasCompressed ? "EAR / RefPack" : "CkMp");
                     EditorGUILayout.LabelField("Terrain Tiles", report.tileCount.ToString());
+                    EditorGUILayout.LabelField("Atlas Applied To Terrain",
+                        report.terrainAtlasApplied ? "Yes — base texture UVs" : "No");
+                    EditorGUILayout.LabelField("Source Terrain Textures",
+                        report.terrainSourceTextureCount.ToString());
+                    EditorGUILayout.LabelField("Texture IDs Matched",
+                        report.terrainTextureMatchCount.ToString());
                     EditorGUILayout.LabelField("Object Placements", report.objectCount.ToString());
                     EditorGUILayout.LabelField("Generated Placeholders", report.objectMarkerCount.ToString());
                     EditorGUILayout.LabelField("Distinct Object Types", report.distinctObjectTypes.ToString());
