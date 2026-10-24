@@ -251,6 +251,7 @@ namespace MusafirEx.CncSage.Editor
                     Cnc3CompiledMapReader.Read(compiledPath,
                         importCompiledAtlases || applyAtlasToTerrain);
                 report.hasCompiledBin = true;
+                report.compiledStreamId = compiled.SignatureRead;
                 report.compiledBinSize = compiled.BinarySize;
                 report.compiledMetadataBytes = compiled.MetadataBytes;
                 report.compiledTextureCount = compiled.Images.Count;
@@ -711,6 +712,8 @@ namespace MusafirEx.CncSage.Editor
                     EditorGUILayout.LabelField("Compiled BIN Data", EditorStyles.boldLabel);
                     EditorGUILayout.LabelField("map.bin", report.hasCompiledBin
                         ? report.compiledBinSize.ToString("N0") + " bytes" : "Not loaded");
+                    EditorGUILayout.LabelField("Compiled Stream ID", report.hasCompiledBin
+                        ? "0x" + report.compiledStreamId.ToString("X8") : "Not available");
                     EditorGUILayout.LabelField("Compiled Header Region",
                         report.compiledMetadataBytes.ToString("N0") + " bytes");
                     EditorGUILayout.LabelField("DDS Atlases",
