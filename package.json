@@ -1,6 +1,6 @@
 {
   "name": "com.musafirex.cnc-sage-tools",
-  "version": "0.9.13",
+  "version": "0.9.14",
   "displayName": "C&C SAGE Model Tools",
   "description": "C&C3/Kane's Wrath Unity importer with direct BIG archive virtual compiled manifest v5 asset indexing, bounded BIN reads and experimental road texture decoding.",
   "unity": "2022.3",
