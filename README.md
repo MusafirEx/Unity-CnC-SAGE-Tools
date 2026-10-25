@@ -184,6 +184,28 @@ If offline, manually save the official EA XML to `Assets/CnC3KW/Definitions/Road
 
 See [official Phase 5A road definitions and 13-source-style validation](docs/Cnc3Phase5OfficialRoadDefinitions.md). Live Unity compilation and visual acceptance are still pending.
 
+## v0.9.14 — Categorized extracted WBData folders
+
+The active (non-BIG) import workflow supports this layout:
+
+```text
+Assets/CnC3KW/
+├── Maps/
+│   └── <map name>/<map name>.map + map.bin/.manifest/.imp/.relo
+└── WBData/
+    ├── DDS/            extracted diffuse/normal/specular textures
+    ├── W3X/            extracted model + hierarchy + animation W3X
+    │   └── Materials/  optional Unity-generated materials
+    └── XML/            extracted XML metadata and optional Roads.xml
+```
+
+- **W3X FXShader material import** now searches the W3X's own folder first, then the categorized sibling **`WBData/DDS`** directory, falling back to a legacy flat `WBData` directory. Matching is exact, case-insensitive basename; DDS is preferred over TGA/PNG in collisions. A cached *filename index* avoids repeatedly scanning thousands of W3X models or loading all DDS textures. Resolved DDS assets become import dependencies so their changes trigger correct reimports.
+- **Phase 5A road textures** now scan the dedicated `WBData/DDS` folder when it exists; scanning the whole `WBData` tree is unnecessary. A flat WBData layout remains supported. The road library still needs correct `RoadTemplate.Texture` mappings when road type names differ from atlas DDS names.
+- **XML:** W3X is XML syntax internally, but the standalone `WBData/XML` texture-definition files are not interchangeable with the `.w3x` model importer. For an actual Roads.ini/Roads.xml definition, drag the matching file into `*_RoadLibrary.asset > Source Definitions` (requires Unity `TextAsset`). W3X hierarchy/animation companion files stay together in the W3X folder.
+- **Source `map.bin` and map.manifest/imp/relo remain supported** and should stay next to their `.map`. The BIG-1/BIG-2 archive loaders remain **experimental**; neither BIG index field is needed.
+- **Performance caveat:** organizing under `DDS/`, `XML/`, and `W3X/` helps Project window navigation, but Unity still imports all assets under `Assets`. If import time/memory is the real blocker, archive or relocate *unused* extracted resources **outside Assets** and bring only required assets into Unity. Do not move files that existing W3X/map materials or GUID references still use.
+- **W3X export caveat:** some game-facing export checks still expect newly exported W3X texture assets beside the output W3X, even though Editor preview materials now resolve from the sibling DDS folder. Package-ready mod asset bundling is a separate validation step.
+
 ## Status: Direct BIG loading is experimental / paused
 
 **Development decision (October 2026): Direct `.big` streaming is on hold.** BIG-1 and BIG-2 were previously merged into `main`, but are **not required for normal C&C3/Kane's Wrath map imports**, nor are they considered a stable replacement for extracted WBData assets.
