@@ -184,6 +184,14 @@ If offline, manually save the official EA XML to `Assets/CnC3KW/Definitions/Road
 
 See [official Phase 5A road definitions and 13-source-style validation](docs/Cnc3Phase5OfficialRoadDefinitions.md). Live Unity compilation and visual acceptance are still pending.
 
+## Status: Direct BIG loading is experimental / paused
+
+**Development decision (October 2026): Direct `.big` streaming is on hold.** BIG-1 and BIG-2 were previously merged into `main`, but are **not required for normal C&C3/Kane's Wrath map imports**, nor are they considered a stable replacement for extracted WBData assets.
+
+**Recommended active workflow:** import `.map` and its existing compiled map bundle, use the already-extracted W3X/DDS/XML assets where available, and continue **Phase 5 road-material mapping and Phase 5B road geometry**. In map Inspector, leave **Road BIG Archive** and **Road Compiled Asset Index** empty. There is no need to open the two BIG Browser windows or build virtual archive indexes for the current road work.
+
+BIG-1/2 source and tooling are retained for optional future investigation. Full compiled GameObject/Texture decoding is incomplete. Do not delete existing extracted assets while current maps or materials reference them. No BIG-3 development is currently scheduled.
+
 ## v0.9.12 — Direct BIG archive browser (no bulk extraction)
 
 **You no longer need to unpack an entire `WBData.big` just to inspect its files.** Use **Tools → C&C SAGE → BIG Archive Browser**, select the original C&C3/Kane's Wrath `.big` (including one outside the Unity Assets directory), and save a compact `Cnc3BigArchiveIndex.asset`. This is an **index only**: thousands of W3X, DDS, XML and compiled entries are not individually imported.
