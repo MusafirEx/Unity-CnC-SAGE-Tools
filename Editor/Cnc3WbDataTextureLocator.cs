@@ -33,39 +33,54 @@ namespace MusafirEx.CncSage.Editor
 
         internal static Texture2D Find(AssetImportContext context, string source)
         {
-            if (context == null || string.IsNullOrWhiteSpace(source))
+            if (context == null) return null;
+            string path = ResolveAssetPath(context.assetPath, source);
+            if (string.IsNullOrEmpty(path)) return null;
+
+            // Register the dependency BEFORE loading. During a large import
+            // batch the DDS may not yet have its Unity Texture2D ready, but
+            // it is still a valid source-asset dependency for a later rebuild.
+            context.DependsOnSourceAsset(path);
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        }
+
+        /// <summary>
+        /// Read-only resolver shared by imports and the selected W3X diagnosis
+        /// menu. Returns an actual existing Unity project asset path (not
+        /// a texture object) and never traverses outside the project.
+        /// </summary>
+        internal static string ResolveAssetPath(string w3xAssetPath, string source)
+        {
+            if (string.IsNullOrWhiteSpace(w3xAssetPath) ||
+                string.IsNullOrWhiteSpace(source))
                 return null;
-            source = source.Trim().Trim('"').Replace('\\', '/');
+            source = source.Trim().Trim('"', '\'').Replace('\\', '/');
             if (source.StartsWith("ART:", StringComparison.OrdinalIgnoreCase))
                 source = source.Substring(4);
             if (source.IndexOf(':') >= 0 || Path.IsPathRooted(source) ||
                 source.StartsWith("../", StringComparison.Ordinal) ||
-                source.Contains("/../"))
+                source.Contains("/../") || source.StartsWith("/", StringComparison.Ordinal))
                 return null;
+
             string name = Path.GetFileNameWithoutExtension(source);
             if (string.IsNullOrWhiteSpace(name)) return null;
 
-            string modelFolder = (Path.GetDirectoryName(context.assetPath) ?? "Assets")
+            string modelFolder = (Path.GetDirectoryName(w3xAssetPath) ?? "Assets")
                 .Replace('\\', '/');
-            // A standalone W3X remains compatible with textures beside it.
-            Texture2D local = FromFolder(context, modelFolder, name);
-            if (local != null) return local;
+            string path = FindSourcePath(modelFolder, name);
+            if (!string.IsNullOrEmpty(path)) return path;
 
-            // Find the WBData root through the W3X folder. Up to six levels
-            // supports nested W3X variants without scanning the entire project.
             string candidate = modelFolder;
-            for (int depth = 0; depth < 6 && !string.IsNullOrEmpty(candidate);
+            for (int depth = 0; depth < 7 && !string.IsNullOrEmpty(candidate);
                  depth++)
             {
                 if (string.Equals(Path.GetFileName(candidate), "WBData",
                     StringComparison.OrdinalIgnoreCase))
                 {
-                    Texture2D sibling = FromFolder(context,
-                        (candidate + "/DDS").Replace('\\', '/'), name);
-                    if (sibling != null) return sibling;
-
-                    // Legacy layout: WBData/<model>.w3x + WBData/<name>.dds.
-                    return FromFolder(context, candidate, name);
+                    path = FindSourcePath((candidate + "/DDS").Replace('\\', '/'), name);
+                    if (!string.IsNullOrEmpty(path)) return path;
+                    // Keep support for original flat WBData imports.
+                    return FindSourcePath(candidate, name);
                 }
                 string parent = Path.GetDirectoryName(candidate);
                 if (string.IsNullOrEmpty(parent) ||
@@ -76,20 +91,17 @@ namespace MusafirEx.CncSage.Editor
             return null;
         }
 
-        private static Texture2D FromFolder(AssetImportContext context,
-            string folder, string name)
+        private static string FindSourcePath(string folder, string name)
         {
-            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+            if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
                 return null;
             Dictionary<string, string> index;
             if (!Cache.TryGetValue(folder, out index))
             {
-                index = new Dictionary<string, string>(
-                    StringComparer.OrdinalIgnoreCase);
-                // Unity-imported .meta is ignored. Only direct children of
-                // this folder are examined, not thousands of nested W3X.
+                index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 string[] files = Directory.GetFiles(folder);
                 Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+                // Prefer .dds; never load all textures just to build this index.
                 foreach (string extension in Extensions)
                 foreach (string file in files)
                 {
@@ -102,13 +114,11 @@ namespace MusafirEx.CncSage.Editor
                 }
                 Cache[folder] = index;
             }
+
             string path;
-            if (!index.TryGetValue(name, out path) || !File.Exists(path))
-                return null;
-            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-            if (texture == null) return null;
-            context.DependsOnSourceAsset(path);
-            return texture;
+            return index.TryGetValue(name, out path) && File.Exists(path)
+                ? path : null;
         }
+
     }
 }

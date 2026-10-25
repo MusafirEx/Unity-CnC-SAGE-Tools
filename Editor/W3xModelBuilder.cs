@@ -339,9 +339,13 @@ namespace MusafirEx.CncSage.Editor
                     name = mesh.Identifier + "." + fx.Name + "." + i
                 };
 
-                string diffuse = FirstNotEmpty(fx.Get("DiffuseTexture"),
-                    fx.Get("Texture_0"));
+                // Try both SAGE albedo slots independently. Older exports
+                // may reference an unavailable diffuse alias but contain a
+                // valid Texture_0 pointing to the sibling WBData/DDS folder.
+                string diffuse = fx.Get("DiffuseTexture");
                 var tex = FindTexture(context, diffuse);
+                if (tex == null)
+                    tex = FindTexture(context, fx.Get("Texture_0"));
                 if (tex != null)
                 {
                     if (material.HasProperty("_MainTex"))
