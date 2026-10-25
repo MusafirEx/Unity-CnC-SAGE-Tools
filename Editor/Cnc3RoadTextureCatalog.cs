@@ -28,7 +28,7 @@ namespace MusafirEx.CncSage.Editor
             var result = new Cnc3RoadTextureCatalog();
             string explicitPath = requestedFolder != null
                 ? AssetDatabase.GetAssetPath(requestedFolder) : null;
-            result.AddFolder(explicitPath);
+            result.AddWbDataTextures(explicitPath);
 
             string firstFolder = Path.GetDirectoryName(mapOrLibraryPath ?? "");
             // Typical: Assets/CnC3KW/Maps/SomeMap/SomeMap.map =>
@@ -37,7 +37,7 @@ namespace MusafirEx.CncSage.Editor
             for (int depth = 0; depth < 6 && !string.IsNullOrEmpty(searchParent);
                  depth++)
             {
-                result.AddFolder(Path.Combine(searchParent, "WBData"));
+                result.AddWbDataTextures(Path.Combine(searchParent, "WBData"));
                 string parent = Path.GetDirectoryName(searchParent);
                 if (string.IsNullOrEmpty(parent) ||
                     string.Equals(parent, searchParent, StringComparison.Ordinal))
@@ -48,7 +48,12 @@ namespace MusafirEx.CncSage.Editor
             if (library != null && library.sourceDefinitions != null)
             {
                 string definitionsPath = AssetDatabase.GetAssetPath(library.sourceDefinitions);
-                result.AddFolder(Path.GetDirectoryName(definitionsPath ?? ""));
+                string definitionsFolder = Path.GetDirectoryName(definitionsPath ?? "");
+                result.AddFolder(definitionsFolder);
+                if (!string.IsNullOrEmpty(definitionsFolder) &&
+                    string.Equals(Path.GetFileName(definitionsFolder), "XML",
+                        StringComparison.OrdinalIgnoreCase))
+                    result.AddWbDataTextures(Path.GetDirectoryName(definitionsFolder));
             }
 
             result.AddFolder(firstFolder);
@@ -100,6 +105,20 @@ namespace MusafirEx.CncSage.Editor
             if (separator >= 0) cleaned = cleaned.Substring(separator + 1);
             cleaned = Path.GetFileNameWithoutExtension(cleaned).Trim();
             return cleaned;
+        }
+
+        private void AddWbDataTextures(string root)
+        {
+            if (string.IsNullOrWhiteSpace(root)) return;
+            root = root.Replace('\\', '/').TrimEnd('/');
+            // If WBData is split into DDS/W3X/XML, index only DDS;
+            // scanning the entire WBData tree would touch thousands of
+            // unrelated imported W3X models and XML metadata assets.
+            string categorized = root + "/DDS";
+            if (AssetDatabase.IsValidFolder(categorized))
+                AddFolder(categorized);
+            else
+                AddFolder(root); // backward compatibility with flat WBData
         }
 
         private void AddFolder(string folder)

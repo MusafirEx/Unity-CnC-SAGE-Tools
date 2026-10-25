@@ -383,40 +383,7 @@ namespace MusafirEx.CncSage.Editor
 
         private static Texture2D FindTexture(AssetImportContext context, string source)
         {
-            if (string.IsNullOrWhiteSpace(source))
-                return null;
-
-            source = source.Replace('\\', '/');
-            if (source.StartsWith("ART:", StringComparison.OrdinalIgnoreCase))
-                source = source.Substring(4);
-            // Do not resolve arbitrary absolute paths or remote names.
-            if (source.IndexOf(':') >= 0 || Path.IsPathRooted(source))
-                return null;
-
-            string assetDirectory = (Path.GetDirectoryName(context.assetPath) ?? "Assets")
-                .Replace('\\', '/');
-            string baseName = Path.GetFileNameWithoutExtension(source);
-            if (string.IsNullOrWhiteSpace(baseName))
-                return null;
-
-            // Match case-insensitively even on filesystems where a source W3X
-            // uses a different case from its texture asset.
-            if (!Directory.Exists(assetDirectory))
-                return null;
-            foreach (var file in Directory.GetFiles(assetDirectory))
-            {
-                if (!TextureExtensions.Any(ext =>
-                    file.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
-                    continue;
-                if (!string.Equals(Path.GetFileNameWithoutExtension(file),
-                    baseName, StringComparison.OrdinalIgnoreCase))
-                    continue;
-                string path = file.Replace('\\', '/');
-                context.DependsOnSourceAsset(path);
-                return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-            }
-
-            return null;
+            return Cnc3WbDataTextureLocator.Find(context, source);
         }
 
         private static Vector3 ToUnity(Vector3 p)
