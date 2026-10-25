@@ -184,6 +184,21 @@ If offline, manually save the official EA XML to `Assets/CnC3KW/Definitions/Road
 
 See [official Phase 5A road definitions and 13-source-style validation](docs/Cnc3Phase5OfficialRoadDefinitions.md). Live Unity compilation and visual acceptance are still pending.
 
+## v0.9.15 — Fix W3X models that remain untextured after moving DDS files
+
+In the categorized source layout `Assets/CnC3KW/WBData/W3X` + `Assets/CnC3KW/WBData/DDS`, v0.9.15 includes a **targeted relink workflow** for W3X objects whose materials are still blank:
+
+1. In Unity Project select one affected `.w3x` asset, e.g. `ABTOWER_D2.NEWSKIN.w3x` (not the folder).
+2. Choose **Assets → C&C SAGE → Reimport Selected W3X Materials**. This calls forced synchronous import on **only selected** W3X files, not every extracted WBData asset.
+3. Open **Assets → C&C SAGE → Diagnose Selected W3X Textures** and read Console. The report shows FXShader texture source names, resolved `WBData/DDS` paths, unresolved names, textures not imported by Unity, generated Material count and materials with assigned albedo.
+4. If a DDS source exists but the Unity texture is not imported, import that **single DDS** first and reimport the selected W3X. If an FXShader doesn't contain a diffuse texture reference, the diagnostic says so rather than assigning an unrelated DDS.
+
+Importer improvements: register `AssetImportContext.DependsOnSourceAsset` before attempting to load the texture (important during large fresh Unity imports) and fall back to the `Texture_0` FXShader reference if `DiffuseTexture` cannot be loaded. The precise DDS filename matches remain case-insensitive; no fuzzy or unrelated fallback textures are assigned.
+
+The prior v0.9.14 plugin fix is confirmed **installed** in the user project, but the selected W3X's dependency report did not include any sibling DDS. This can be caused by a stale import or a missing/unimported actual texture reference. The new menu is designed to distinguish them without reimporting all ~13,000 files.
+
+**Unity Editor build/visual verification is still required.** The GitHub patch is not evidence that a particular W3X has an applicable FXShader reference; the Diagnose command provides that actual evidence.
+
 ## v0.9.14 — Categorized extracted WBData folders
 
 The active (non-BIG) import workflow supports this layout:
